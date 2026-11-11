@@ -9,7 +9,15 @@ A self-hosted research and content-prep assistant for your YouTube channels. Eve
 
 **Nothing is ever published.** Everything lands in a review queue as "needs review". You record, edit, design and upload yourself. Numbers shown are real numbers from the APIs; nothing predicts views.
 
-## Run it locally (no Docker)
+## Quick start: one command
+
+```bash
+./dev.sh        # backs up ytstudio.db (backups/), migrates, then runs web + worker + beat; Ctrl+C stops all
+```
+
+Needs Redis (`brew services start redis`) and FFmpeg. Open http://localhost:8000.
+
+## Run it locally (no Docker), step by step
 
 Needs Python 3.12, [uv](https://docs.astral.sh/uv/), Redis, and FFmpeg (`brew install redis ffmpeg`).
 

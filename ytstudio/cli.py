@@ -32,8 +32,17 @@ def copy_sqlite(src: Path, dest_url: str) -> None:
     """One-off copy of an existing SQLite database into a freshly migrated Postgres."""
     from sqlalchemy import MetaData, create_engine, text
 
+    from alembic.script import ScriptDirectory
+
+    src_engine = create_engine(f"sqlite:///{src}")
+    head = ScriptDirectory.from_config(alembic_config(dest_url)).get_current_head()
+    with src_engine.connect() as c:
+        version = c.execute(text("SELECT version_num FROM alembic_version")).scalar()
+    if version != head:  # an old file still has plain-text tokens and an older shape
+        raise SystemExit(f"{src} is at migration {version}, not {head}. Run it first: "
+                         f"DATABASE_URL=sqlite:///{src} python -m ytstudio.cli migrate")
     migrate(dest_url)
-    src_engine, dest = create_engine(f"sqlite:///{src}"), engine_for(dest_url)
+    dest = engine_for(dest_url)
     meta = MetaData()
     meta.reflect(bind=src_engine)
     with src_engine.connect() as s, dest.begin() as d:
