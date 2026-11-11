@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% import "macros.html" as m with context %}
+{% block title %}Today · {{ current.title }}{% endblock %}
+{% block content %}
+<header>
+  <h1>Today</h1>
+  <span class="sub">
+    {% if schedule.enabled and schedule.next_run_utc %}Next daily run {{ schedule.next_run_utc | ago }}{% else %}No daily schedule. <a href="/settings">Set one</a>{% endif %}
+  </span>
+</header>
+<div class="actions">
+  {{ m.post("/today/run", "Run today's brief now", "btn quiet") }}
+  <span class="hint">One run per channel per day. Re-running resumes a failed run; it never duplicates a finished one.</span>
+</div>
+{{ m.run_progress(run) }}
+
+{% if not data %}
+  <section class="panel narrow"><h2>No brief yet</h2><p class="muted">Run it now, or set a daily time in Settings. The brief has your performance, trends, five ideas, a script, a package and SEO. Every part waits for your review; nothing is published.</p></section>
+{% else %}
+  {% set b = data.brief %}{% set perf = b.data.performance or {} %}{% set an = b.data.analysis or {} %}{% set tr = b.data.trends or {} %}
+  <section class="panel">
+    <div class="section-head"><h2>Your last 90 days</h2>{{ m.review_actions(b, "/today") }}</div>
+    {% if perf.count %}
+      <p class="muted">{{ perf.count }} long-form uploads, median {{ perf.median_views | num }} views. Multiples below are each video's views divided by that median.</p>
+      <p>{{ an.summary }}</p>
+      <div class="split">
+        <div><h3>Working</h3><ul>{% for x in an.working or [] %}<li>{{ x }}</li>{% endfor %}</ul></div>
+        <div><h3>Not working</h3><ul>{% for x in an.not_working or [] %}<li>{{ x }}</li>{% endfor %}</ul></div>
+      </div>
+      {% if an.retention_notes %}<h3>Retention</h3><ul>{% for x in an.retention_notes %}<li>{{ x }}</li>{% endfor %}</ul>{% endif %}
+      <div class="table-wrap"><table>
+        <thead><tr><th>Top performers</th><th>Views</th><th>× median</th></tr></thead>
+        <tbody>{% for v in perf.top %}<tr><td><a href="/insights/video/{{ v.video_id }}">{{ v.title }}</a></td><td>{{ v.views | num }}</td><td>{{ v.multiple }}×</td></tr>{% endfor %}</tbody>
+      </table></div>
+    {% else %}<p class="muted">{{ an.summary or "No uploads in the last 90 days to compare." }}</p>{% endif %}
+  </section>
+
+  <section class="panel">
+    <div class="section-head"><h2>Outliers right now</h2><a href="/trends">All trends</a></div>
+    {% if tr.outliers %}
+      <p class="muted">{{ tr.considered }} videos checked; showing ones at {{ tr.min_multiple }}× or more of their own channel's median. A multiple describes the past, not what your video will do.</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Video</th><th>× median</th><th>Views</th><th>Age</th><th>Views/day</th></tr></thead>
+        <tbody>{% for o in tr.outliers[:6] %}<tr><td><a href="https://youtu.be/{{ o.video_id }}" target="_blank" rel="noopener">{{ o.title }}</a><br><span class="muted">{{ o.channel_title }} · {{ o.formula }}</span></td><td>{{ o.multiple }}×</td><td>{{ o.views | short }}</td><td>{{ o.age_days }} d</td><td>{{ o.velocity | short }}</td></tr>{% endfor %}</tbody>
+      </table></div>
+    {% else %}<p class="muted">No video cleared the outlier threshold today.</p>{% endif %}
+  </section>
+
+  <section class="panel">
+    <div class="section-head"><h2>Ideas</h2><a href="/ideas">Backlog</a></div>
+    <div class="cards">
+    {% for i in data.ideas %}{% set d = i.data %}
+      <article class="card">
+        <div class="section-head"><h3>{{ d.rank }}. {{ d.title }}</h3>{{ m.review_actions(i, "/today") }}</div>
+        <dl class="kv">
+          <dt>Angle</dt><dd>{{ d.angle }}</dd>
+          <dt>Why now</dt><dd>{{ d.why_now }}{% for r in d.outlier_refs %} <a href="https://youtu.be/{{ r }}" target="_blank" rel="noopener">[{{ loop.index }}]</a>{% endfor %}</dd>
+          <dt>Different</dt><dd>{{ d.difference }}</dd>
+          <dt>Builds on</dt><dd>{% for r in d.builds_on %}<a href="/insights/video/{{ r }}">{{ r }}</a> {% else %}<span class="muted">none of your past videos</span>{% endfor %}</dd>
+          <dt>Effort</dt><dd>{{ d.effort }}</dd>
+        </dl>
+        <div class="actions">
+          <a class="copy" href="/assets/{{ i.id }}">Open</a>
+          {% if not loop.first %}{{ m.post("/ideas/" ~ i.id ~ "/develop", "Write script, package, SEO for this", "copy") }}{% endif %}
+        </div>
+      </article>
+    {% endfor %}
+    </div>
+  </section>
+
+  {% set sc = data.sections.script %}
+  {% if sc %}
+  <section class="panel">
+    <div class="section-head"><h2>Script: {{ sc.title }}</h2>{{ m.review_actions(sc, "/today") }}</div>
+    <p><strong>Hook</strong> <span class="score">{{ sc.data.hook.panel_score }}</span> <span class="muted">hook panel score ({{ sc.data.hook.band | lower }}, {{ sc.data.hook.formula }}). A heuristic, not a prediction.</span></p>
+    <pre class="copyable">{{ sc.data.hook.hook }}</pre>
+    <details><summary class="muted">All 5 hooks and their scores</summary>
+      <ol>{% for h in sc.data.hooks %}<li><span class="score">{{ h.panel_score }}</span> {{ h.hook }} <span class="muted">weakest: {{ h.weakest | lower }}, {{ h.fix }}</span></li>{% endfor %}</ol>
+    </details>
+    <p class="muted">~{{ sc.data.script.estimated_minutes }} min, {{ sc.data.script.sections | length }} sections.</p>
+    <div class="actions"><a class="btn small" href="/assets/{{ sc.id }}">Open in script editor</a><button class="copy" data-copy-target="#script-{{ sc.id }}">Copy script</button></div>
+    <pre class="copyable" id="script-{{ sc.id }}" hidden>{% for s in sc.data.script.sections %}[{{ s.beat | upper }}] {{ s.heading }}
+{{ s.spoken }}
+{% if s.broll %}B-roll: {{ s.broll | join("; ") }}
+{% endif %}{% if s.on_screen_text %}On screen: {{ s.on_screen_text | join("; ") }}
+{% endif %}
+{% endfor %}</pre>
+  </section>
+  {% endif %}
+
+  {% set pk = data.sections.package %}
+  {% if pk %}
+  <section class="panel">
+    <div class="section-head"><h2>Package</h2>{{ m.review_actions(pk, "/today") }}</div>
+    <div class="cards">{% for pair in pk.data.pairs %}
+      <div class="card"><h3>{{ pair.title }} <button class="copy" data-copy="{{ pair.title }}">Copy</button></h3>
+        <p>Thumbnail text: <strong>{{ pair.thumbnail_text }}</strong></p>
+        <p class="muted">Lint {{ pair.lint.score }}/100{% for i in pair.lint.issues %} · {{ i.kind }}: {{ i.message }}{% endfor %}</p></div>
+    {% endfor %}</div>
+    <h3>Thumbnail brief</h3><pre class="copyable">{{ pk.data.thumbnail_brief }}</pre>
+    <details class="edit"><summary>Edit</summary>
+      <form method="post" action="/assets/{{ pk.id }}/edit"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="next" value="/today">
+        <label class="field">Pairs (JSON)</label><textarea name="pairs" rows="6">{{ pk.data.pairs | tojson }}</textarea>
+        <label class="field">Thumbnail brief</label><textarea name="thumbnail_brief" rows="3">{{ pk.data.thumbnail_brief }}</textarea>
+        <button class="btn small">Save</button></form>
+    </details>
+  </section>
+  {% endif %}
+
+  {% set seo = data.sections.seo %}
+  {% if seo %}
+  <section class="panel">
+    <div class="section-head"><h2>SEO</h2>{{ m.review_actions(seo, "/today") }}</div>
+    <h3>Description <button class="copy" data-copy="{{ seo.data.description }}">Copy</button></h3><pre class="copyable">{{ seo.data.description }}</pre>
+    <h3>Tags <button class="copy" data-copy="{{ seo.data.tags | join(', ') }}">Copy</button></h3><p>{{ seo.data.tags | join(", ") }}</p>
+    <h3>Pinned comment <button class="copy" data-copy="{{ seo.data.pinned_comment }}">Copy</button></h3><pre class="copyable">{{ seo.data.pinned_comment }}</pre>
+    <h3>Target queries</h3><ul>{% for q in seo.data.target_queries %}<li>{{ q }}</li>{% endfor %}</ul>
+    <p class="hint">Chapters: {{ seo.data.chapters }}</p>
+    <details class="edit"><summary>Edit</summary>
+      <form method="post" action="/assets/{{ seo.id }}/edit"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="next" value="/today">
+        <label class="field">Description</label><textarea name="description" rows="6">{{ seo.data.description }}</textarea>
+        <label class="field">Tags (comma separated)</label><input type="text" name="tags" value="{{ seo.data.tags | join(', ') }}">
+        <label class="field">Pinned comment</label><textarea name="pinned_comment" rows="3">{{ seo.data.pinned_comment }}</textarea>
+        <label class="field">Target queries (comma separated)</label><input type="text" name="target_queries" value="{{ seo.data.target_queries | join(', ') }}">
+        <button class="btn small">Save</button></form>
+    </details>
+  </section>
+  {% endif %}
+{% endif %}
+{% endblock %}

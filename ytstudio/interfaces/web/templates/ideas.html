@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% import "macros.html" as m with context %}
+{% block title %}Ideas · {{ current.title }}{% endblock %}
+{% block content %}
+<header><h1>Ideas backlog</h1></header>
+<form class="toolbar" method="get" action="/ideas">
+  <label>Status
+    <select name="status" data-autosubmit>
+      {% for v, name in [("", "All"), ("needs_review", "Needs review"), ("approved", "Approved"), ("discarded", "Discarded")] %}
+        <option value="{{ v }}" {% if (status or "") == v %}selected{% endif %}>{{ name }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <noscript><button class="btn quiet">Apply</button></noscript>
+</form>
+<section class="panel">
+  {% if ideas %}
+  <div class="cards">
+  {% for i in ideas %}{% set d = i.data %}
+    <article class="card">
+      <div class="section-head"><h3><a href="/assets/{{ i.id }}">{{ i.title }}</a></h3>{{ m.review_actions(i, "/ideas") }}</div>
+      <p>{{ d.angle }}</p>
+      <p class="muted">{{ d.effort }} · {{ i.created_at.strftime("%-d %b") }} · {{ d.outlier_refs | length }} outlier reference(s)</p>
+      <div class="actions">{{ m.post("/ideas/" ~ i.id ~ "/develop", "Develop: script, package, SEO", "copy") }}</div>
+    </article>
+  {% endfor %}
+  </div>
+  {% else %}<p class="muted">No ideas yet. They arrive with each daily brief.</p>{% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,26 @@
+{% macro post(action, label, cls="btn small", fields={}, confirm=None) -%}
+<form method="post" action="{{ action }}"{% if confirm %} data-confirm="{{ confirm }}"{% endif %}>
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  {% for k, v in fields.items() %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+  <button class="{{ cls }}" type="submit">{{ label }}</button>
+</form>
+{%- endmacro %}
+
+{% macro review_actions(a, next) -%}
+<div class="actions">
+  <span class="tag {{ a.status }}">{{ a.status | replace("_", " ") }}</span>
+  {% if a.status != "approved" %}{{ post("/assets/" ~ a.id ~ "/status", "Approve", fields={"status": "approved", "next": next}) }}{% endif %}
+  {% if a.status != "discarded" %}{{ post("/assets/" ~ a.id ~ "/status", "Discard", "copy", fields={"status": "discarded", "next": next}) }}{% endif %}
+  {% if a.kind in ("idea", "script", "package", "seo", "brief") %}{{ post("/assets/" ~ a.id ~ "/regenerate", "Regenerate", "copy", fields={"next": next}) }}{% endif %}
+</div>
+{%- endmacro %}
+
+{% macro run_progress(run) -%}
+{% if run %}
+<div class="panel" data-run="{{ run.id }}">
+  <div class="section-head"><h2>Run #{{ run.id }}: {{ run.pipeline }}</h2><span class="pill {{ 'ok' if run.status == 'done' else 'err' if run.status == 'failed' else 'run' }}" data-run-status>{{ run.status }} {{ run.progress }}</span></div>
+  <ol class="muted" data-run-steps>{% for s in run.steps %}<li>{{ s.step }}: {{ s.status }}{% if s.error %} <span class="err-text">{{ s.error }}</span>{% endif %}</li>{% endfor %}</ol>
+  <p class="hint">This page updates by itself and reloads when the run finishes.</p>
+</div>
+{% endif %}
+{%- endmacro %}

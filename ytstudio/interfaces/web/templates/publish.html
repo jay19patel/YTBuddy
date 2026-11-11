@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Publish · {{ current.title }}{% endblock %}
+{% block content %}
+<header><h1>Publish</h1><span class="sub">Manual only: nothing here runs unless you press the button.</span></header>
+<div class="modes" role="radiogroup" aria-label="What are you publishing?">
+  <input type="radio" name="mode" id="m-video" value="video" form="upload" checked><label for="m-video">Video</label>
+  <input type="radio" name="mode" id="m-short" value="short" form="upload"><label for="m-short">Short</label>
+  <input type="radio" name="mode" id="m-live" value="live"><label for="m-live">Live</label>
+</div>
+<form id="upload" class="desk for-upload" action="/upload" method="post" enctype="multipart/form-data">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <div>
+    <label class="frame" id="drop">
+      <input type="file" name="video" accept="video/*" required>
+      <div>
+        <strong id="file-name">Drop a video here</strong>
+        <span class="for-video">or click to choose. Landscape works best.</span>
+        <span class="for-short">or click to choose. Vertical, up to 3 minutes.</span>
+        <div class="warn" id="file-warn" hidden></div>
+      </div>
+    </label>
+  </div>
+  <div class="panel">
+    <div class="row"><label class="field" for="u-title">Title</label><input type="text" id="u-title" name="title" maxlength="100" required></div>
+    <div class="row"><label class="field" for="u-desc">Description</label><textarea id="u-desc" name="description" rows="5"></textarea><div class="hint for-short">#Shorts is added for you.</div></div>
+    <div class="row"><label class="field" for="u-tags">Tags</label><input type="text" id="u-tags" name="tags" placeholder="cooking, quick recipes"><div class="hint">Separate with commas.</div></div>
+    <div class="row"><label class="field" for="u-privacy">Visibility</label>
+      <select id="u-privacy" name="privacy"><option value="private">Private</option><option value="unlisted">Unlisted</option><option value="public">Public</option></select></div>
+    <button class="btn" type="submit"><span class="for-video">Upload video</span><span class="for-short">Upload Short</span></button>
+    <div class="progress"><div id="bar"></div></div>
+    <div id="status" aria-live="polite"></div>
+  </div>
+</form>
+<form class="desk for-live" action="/live" method="post">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <div class="frame live-frame"><div><div class="dot" aria-hidden="true"></div><strong>Stream from OBS</strong><span>Create the stream here, then paste the server and key into OBS.</span></div></div>
+  <div class="panel">
+    <div class="row"><label class="field" for="l-title">Title</label><input type="text" id="l-title" name="title" maxlength="100" required></div>
+    <div class="row"><label class="field" for="l-desc">Description</label><textarea id="l-desc" name="description" rows="4"></textarea></div>
+    <div class="split row">
+      <div><label class="field" for="l-privacy">Visibility</label><select id="l-privacy" name="privacy"><option value="private">Private</option><option value="unlisted">Unlisted</option><option value="public">Public</option></select></div>
+      <div><label class="field" for="l-start">Starts in (minutes)</label><input type="number" id="l-start" name="start_in_minutes" value="5" min="0"></div>
+    </div>
+    <button class="btn quiet" type="submit">Create live stream</button>
+  </div>
+</form>
+{% endblock %}

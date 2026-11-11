@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Trends · {{ current.title }}{% endblock %}
+{% block content %}
+<header><h1>Trends explorer</h1><span class="sub">{% if day %}From the run on {{ day }}{% endif %}</span></header>
+<form class="toolbar" method="get" action="/trends">
+  <label>Source <select name="provider" data-autosubmit><option value="">All</option>{% for pv in providers %}<option {% if pv == provider %}selected{% endif %}>{{ pv }}</option>{% endfor %}</select></label>
+  <label>At least <input type="number" step="0.5" min="0" name="min" value="{{ min_x }}" class="short-select">× median</label>
+  <button class="btn small">Filter</button>
+</form>
+<section class="panel">
+  <p class="muted">Multiple = this video's views ÷ the median of its own channel's recent uploads. It says what already happened, not what will happen to a video like it. Showing {{ rows | length }} of {{ total }}.</p>
+  {% if rows %}
+  <div class="table-wrap"><table>
+    <thead><tr><th>Video</th><th>× median</th><th>Views</th><th>Channel median</th><th>Age</th><th>Views/day</th><th>Source</th></tr></thead>
+    <tbody>{% for r in rows %}<tr>
+      <td><a href="https://youtu.be/{{ r.video_id }}" target="_blank" rel="noopener">{{ r.title }}</a><br><span class="muted">{{ r.channel_title }} · {{ r.formula }}</span></td>
+      <td><strong>{{ r.multiple }}×</strong></td><td>{{ r.views | num }}</td><td>{{ r.channel_median | num }}</td>
+      <td>{{ r.age_days }} d</td><td>{{ r.velocity | num }}</td><td>{{ r.provider }}</td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  {% else %}<p class="muted">No trends yet. They are collected by the daily run.</p>{% endif %}
+</section>
+{% endblock %}

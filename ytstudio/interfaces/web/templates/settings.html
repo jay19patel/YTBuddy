@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% import "macros.html" as m with context %}
+{% block title %}Settings{% endblock %}
+{% block content %}
+<header><h1>Settings</h1></header>
+
+{% if current and schedule %}
+<form class="panel settings" method="post" action="/settings/schedule">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <div class="section-head"><h2>Daily brief for {{ current.title }}</h2>
+    {% if not schedule.confirmed %}<span class="pill run">Detected, please confirm</span>{% endif %}</div>
+  <div class="job-row">
+    <label class="switch"><input type="checkbox" name="enabled" value="true" {% if schedule.enabled %}checked{% endif %}> Run every day</label>
+    <span class="muted">{% if schedule.next_run_utc %}Next {{ schedule.next_run_utc | clock }}{% endif %}</span>
+  </div>
+  <div class="split row">
+    <div><label class="field" for="s-tz">Time zone</label><input type="text" id="s-tz" name="timezone" value="{{ schedule.timezone }}" placeholder="Asia/Kolkata"></div>
+    <div><label class="field" for="s-time">Local time</label><input type="text" id="s-time" name="run_time" value="{{ schedule.run_time.strftime('%H:%M') }}" pattern="[0-2][0-9]:[0-5][0-9]"></div>
+  </div>
+  <div class="row"><span class="field">Days</span>
+    <div class="actions">{% for d, name in [("0","Mon"),("1","Tue"),("2","Wed"),("3","Thu"),("4","Fri"),("5","Sat"),("6","Sun")] %}
+      <label class="switch"><input type="checkbox" name="days" value="{{ d }}" {% if d in schedule.days %}checked{% endif %}> {{ name }}</label>{% endfor %}</div>
+  </div>
+  <div class="split row">
+    <div><label class="field" for="s-lang">Script language</label>
+      <select id="s-lang" name="language">{% for v, n in [("en","English"),("hi","Hindi"),("hinglish","Hinglish")] %}<option value="{{ v }}" {% if schedule.language == v %}selected{% endif %}>{{ n }}</option>{% endfor %}</select></div>
+    <div><label class="field" for="s-region">Region</label><input type="text" id="s-region" name="region" value="{{ schedule.region }}" maxlength="2"></div>
+  </div>
+  <div class="row"><label class="field" for="s-niche">Niche</label><input type="text" id="s-niche" name="niche" value="{{ schedule.niche }}"><p class="hint">Searched once a day (100 quota units per search, capped).</p></div>
+  <div class="row"><label class="field" for="s-topics">Custom topics (one per line)</label><textarea id="s-topics" name="custom_topics" rows="4">{{ schedule.custom_topics | join("\n") }}</textarea></div>
+  <div class="split row">
+    <div><label class="field" for="s-len">Target length (minutes)</label><input type="number" id="s-len" name="target_minutes" min="1" max="120" value="{{ schedule.target_minutes }}"></div>
+    <div><label class="switch"><input type="checkbox" name="shorts_enabled" value="true" {% if schedule.shorts_enabled %}checked{% endif %}> Make Shorts automatically when a linked upload goes live</label></div>
+  </div>
+  <button class="btn quiet" type="submit">Save and confirm</button>
+</form>
+<div class="actions">
+  {{ m.post("/settings/detect", "Detect niche, language and region again", "copy") }}
+  {{ m.post("/channels/" ~ current.id ~ "/disconnect", "Disconnect " ~ current.title, "copy", confirm="Disconnect " ~ current.title ~ "? Its Google access is revoked.") }}
+</div>
+{% endif %}
+
+<form class="panel settings" method="post" action="/settings/profile">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <h2>Voice, notifications, budget</h2>
+  <div class="row"><label class="field" for="s-voice">voice.md</label>
+    <textarea id="s-voice" name="voice_md" rows="10" placeholder="Who you talk to, how you talk, words you never use, what you will not claim.">{{ user.voice_md }}</textarea>
+    <p class="hint">Every script, package and SEO prompt includes this. Template: vendor/youtube-agent-skill/templates/voice.md</p></div>
+  <div class="row"><label class="switch"><input type="checkbox" name="notify_email" value="true" {% if user.notify_email %}checked{% endif %} {% if not email_ready %}disabled{% endif %}> Email me when a brief or Shorts are ready, or a job fails</label>
+    {% if not email_ready %}<p class="hint">Set SMTP_HOST in .env to enable email.</p>{% endif %}</div>
+  <div class="row"><label class="field" for="s-tg">Telegram chat id</label><input type="text" id="s-tg" name="telegram_chat_id" value="{{ user.telegram_chat_id or '' }}" {% if not telegram_ready %}disabled{% endif %}>
+    {% if not telegram_ready %}<p class="hint">Set TELEGRAM_BOT_TOKEN in .env to enable Telegram.</p>{% endif %}</div>
+  <div class="row"><label class="field" for="s-budget">Daily LLM budget (USD)</label><input type="number" id="s-budget" name="daily_budget_usd" min="0" step="0.5" value="{{ user.daily_budget_usd }}">
+    <p class="hint">At the budget, non-critical steps (analysis, package, SEO, Shorts titles) stop and you are notified. Ideas and scripts still run.</p></div>
+  <button class="btn quiet" type="submit">Save</button>
+</form>
+
+<form class="panel settings" method="post" action="/settings">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <h2>Background sync</h2>
+  <div class="job-row">
+    <label class="switch"><input type="checkbox" name="stats_enabled" value="true" {% if settings.stats_enabled %}checked{% endif %}> Channel stats</label>
+    <label class="every">Every <input type="number" name="stats_minutes" min="1" max="1440" value="{{ settings.stats_minutes }}"> minutes</label>
+    <p class="hint">Subscribers, views and videos in the sidebar. 1 quota unit per run for all channels. Checked every 5 minutes.</p>
+  </div>
+  <div class="job-row">
+    <label class="switch"><input type="checkbox" name="analytics_enabled" value="true" {% if settings.analytics_enabled %}checked{% endif %}> Analytics</label>
+    <label class="every">Every <input type="number" name="analytics_minutes" min="5" max="1440" value="{{ settings.analytics_minutes }}"> minutes</label>
+    <p class="hint">Views, watch time, top videos and revenue. YouTube updates these about once a day.</p>
+  </div>
+  <div class="job-row">
+    <label class="field" for="s-currency">Revenue currency</label>
+    <select id="s-currency" name="currency" class="short-select">{% for c in currencies %}<option {% if c == settings.currency %}selected{% endif %}>{{ c }}</option>{% endfor %}</select>
+  </div>
+  <button class="btn quiet" type="submit">Save settings</button>
+</form>
+<section class="panel">
+  <h2>Sync jobs</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Job</th><th>Status</th><th>Next run</th><th>Last run</th><th></th></tr></thead>
+    <tbody>{% for j in jobs_status %}<tr>
+      <td><strong>{{ j.name }}</strong><br><span class="muted">every {{ j.minutes }} min</span></td>
+      <td>{% if j.running %}<span class="pill run">Running</span>{% elif j.queued %}<span class="pill run">Queued</span>{% elif j.paused %}<span class="pill">Paused</span>{% else %}<span class="pill ok">Scheduled</span>{% endif %}</td>
+      <td>{% if j.paused %}<span class="muted">-</span>{% else %}{{ j.next_run | clock }}<br><span class="muted">{{ j.next_run | ago }}</span>{% endif %}</td>
+      <td class="wrap">{% if j.last %}<span class="pill {{ 'ok' if j.last.status == 'ok' else 'err' }}">{{ j.last.status | capitalize }}</span> {{ j.last.started_at | ago }}{% if j.last.status == "error" %}<div class="err-text">{{ j.last.message | urlize }}</div>{% endif %}{% else %}<span class="muted">Never</span>{% endif %}</td>
+      <td><form method="post" action="/settings/run/{{ j.id }}"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn small" {% if j.running or j.queued %}disabled{% endif %}>Run now</button></form></td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+</section>
+
+<section class="panel">
+  <h2>LLM aliases <span class="muted">(read-only, config/llm.toml)</span></h2>
+  {% if proxy %}<p class="muted">All aliases go through the LiteLLM proxy (LITELLM_PROXY_URL).</p>{% endif %}
+  <dl class="kv">{% for alias, spec in llm.items() %}<dt>{{ alias }}</dt><dd>{{ spec.models | join(" → ") }}</dd>{% endfor %}</dl>
+</section>
+<section class="panel">
+  <h2>Feature flags <span class="muted">(read-only, .env)</span></h2>
+  <dl class="kv">
+    <dt>Manual publish page</dt><dd>{{ "on" if flags.publish else "off" }} <span class="muted">ENABLE_MANUAL_PUBLISH; uploads only when you press the button</span></dd>
+    <dt>yt-dlp for own videos</dt><dd>{{ "on" if flags.ytdlp else "off" }} <span class="muted">ENABLE_YTDLP; check YouTube's Terms of Service first</span></dd>
+    <dt>Automatic publishing</dt><dd>{{ "on" if flags.auto_publish else "off" }} <span class="muted">not implemented; everything goes to review</span></dd>
+  </dl>
+</section>
+{% endblock %}

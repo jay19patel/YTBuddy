@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% import "macros.html" as m with context %}
+{% block title %}{{ a.title }}{% endblock %}
+{% block content %}
+{% set d = a.data %}
+<header><h1>{{ a.title }}</h1><span class="sub">{{ a.kind }} · updated {{ a.updated_at | ago }}</span></header>
+{{ m.run_progress(run) }}
+<section class="panel">
+  <div class="section-head"><h2>Review</h2>{{ m.review_actions(a, "/assets/" ~ a.id) }}</div>
+
+  {% if a.kind == "idea" %}
+    <dl class="kv">
+      <dt>Angle</dt><dd>{{ d.angle }}</dd>
+      <dt>Why now</dt><dd>{{ d.why_now }}{% for r in d.outlier_refs %} <a href="https://youtu.be/{{ r }}" target="_blank" rel="noopener">[{{ loop.index }}]</a>{% endfor %}</dd>
+      <dt>Different</dt><dd>{{ d.difference }}</dd>
+      <dt>Effort</dt><dd>{{ d.effort }}</dd>
+    </dl>
+    <div class="actions">{{ m.post("/ideas/" ~ a.id ~ "/develop", "Develop: script, package, SEO", "btn small") }}</div>
+    {% for kind, x in developed.items() %}<p><a href="/assets/{{ x.id }}">{{ kind | capitalize }}</a> <span class="tag {{ x.status }}">{{ x.status | replace("_", " ") }}</span></p>{% endfor %}
+    <details class="edit"><summary>Edit</summary>
+      <form method="post" action="/assets/{{ a.id }}/edit"><input type="hidden" name="csrf" value="{{ csrf }}">
+        <label class="field">Title</label><input type="text" name="title" value="{{ d.title }}">
+        <label class="field">Angle</label><textarea name="angle" rows="3">{{ d.angle }}</textarea>
+        <label class="field">What makes it different</label><textarea name="difference" rows="3">{{ d.difference }}</textarea>
+        <button class="btn small">Save</button></form>
+    </details>
+
+  {% elif a.kind == "script" %}
+    <h3>Hooks <span class="muted">(hook panel score: a heuristic from the vendored hookscore tool, not a prediction)</span></h3>
+    <ol>{% for h in d.hooks %}<li><span class="score">{{ h.panel_score }}</span> {{ h.hook }} <span class="muted">{{ h.formula }}; weakest {{ h.weakest | lower }}: {{ h.fix }}</span></li>{% endfor %}</ol>
+    <div class="row">
+      <label class="field" for="try-hook">Try your own hook</label>
+      <div class="row-inline"><input type="text" id="try-hook" data-hook-input><button class="btn small" type="button" data-hook-score>Score</button></div>
+      <p class="hint" data-hook-result aria-live="polite"></p>
+    </div>
+    <form method="post" action="/assets/{{ a.id }}/edit"><input type="hidden" name="csrf" value="{{ csrf }}">
+      {% for s in d.script.sections %}
+        <div class="script-section {{ s.beat }}">
+          <div class="beat">{{ s.beat | replace("_", " ") }} · {{ s.heading }}</div>
+          <textarea name="section_{{ loop.index0 }}" rows="{{ [3, (s.spoken | length // 90) + 2] | max }}" class="spoken">{{ s.spoken }}</textarea>
+          {% if s.broll %}<p class="hint">B-roll: {{ s.broll | join("; ") }}</p>{% endif %}
+          {% if s.on_screen_text %}<p class="hint">On screen: {{ s.on_screen_text | join("; ") }}</p>{% endif %}
+        </div>
+      {% endfor %}
+      <button class="btn quiet">Save script</button>
+    </form>
+
+  {% elif a.kind == "package" %}
+    {% for pair in d.pairs %}<div class="card"><h3>{{ pair.title }}</h3><p>Thumbnail text: <strong>{{ pair.thumbnail_text }}</strong></p><p class="muted">Lint {{ pair.lint.score }}/100{% for i in pair.lint.issues %} · {{ i.kind }}: {{ i.message }}{% endfor %}</p></div>{% endfor %}
+    <h3>Thumbnail brief</h3><pre class="copyable">{{ d.thumbnail_brief }}</pre>
+
+  {% elif a.kind == "seo" %}
+    <h3>Description <button class="copy" data-copy="{{ d.description }}">Copy</button></h3><pre class="copyable">{{ d.description }}</pre>
+    <p>Tags: {{ d.tags | join(", ") }}</p><p>Pinned comment: {{ d.pinned_comment }}</p>
+
+  {% elif a.kind == "chapters" %}
+    {% if d.chapters.valid %}<h3>Chapters <button class="copy" data-copy-target="#ch">Copy</button></h3>{% else %}<p class="err-text">Draft chapters fail YouTube's rules (3+, first at 0:00, each 10 s+). Fix before pasting.</p>{% endif %}
+    <pre class="copyable" id="ch">{% for c in d.chapters.chapters %}{{ c.label }} {{ c.draft_title }}
+{% endfor %}</pre>
+    <p class="hint">Titles are topic words from the transcript; rewrite them in your words.</p>
+    <h3>Dead-air edit list</h3>
+    <p class="muted">{{ d.edit_list.cuts | length }} cuts, {{ d.edit_list.removed }} s removed.</p>
+    <div class="table-wrap"><table><thead><tr><th>Kind</th><th>From</th><th>To</th><th>Why</th></tr></thead>
+      <tbody>{% for c in d.edit_list.cuts %}<tr><td>{{ c.kind }}</td><td>{{ c.start }}</td><td>{{ c.end }}</td><td>{{ c.why }}</td></tr>{% endfor %}</tbody></table></div>
+
+  {% else %}
+    <pre class="copyable">{{ d | tojson(indent=2) }}</pre>
+  {% endif %}
+</section>
+{% if d.history %}<section class="panel"><h2>Earlier versions</h2>{% for h in d.history %}<details><summary>Version {{ loop.revindex }}</summary><pre class="copyable">{{ h | tojson(indent=2) }}</pre></details>{% endfor %}</section>{% endif %}
+{% endblock %}

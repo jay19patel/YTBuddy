@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% import "macros.html" as m with context %}
+{% block content %}
+<header><h1>Notifications</h1>{% if unread %}{{ m.post("/notifications/read", "Mark all read", "copy") }}{% endif %}</header>
+<section class="panel">
+  {% for n in items %}
+    <div class="job-row"><div><strong>{% if not n.read %}● {% endif %}<a href="{{ n.link }}">{{ n.title }}</a></strong><p class="hint">{{ n.body }}</p></div><span class="muted">{{ n.created_at | ago }}</span></div>
+  {% else %}<p class="muted">Nothing yet.</p>{% endfor %}
+</section>
+{% endblock %}

@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}Insights · {{ current.title }}{% endblock %}
+{% block content %}
+<header>
+  <h1>{{ current.title }}</h1>
+  <span class="sub"><a href="https://studio.youtube.com/channel/{{ current.id }}" target="_blank" rel="noopener">Open in YouTube Studio</a></span>
+</header>
+{% set sym = "₹" if currency == "INR" else "$" %}
+{% set period_form %}
+  <form class="toolbar" method="get" action="/insights">
+    <label>Period
+      <select name="days" data-autosubmit>
+        {% for d, name in [(7, "Last 7 days"), (28, "Last 28 days"), (90, "Last 90 days"), (365, "Last 365 days")] %}
+          <option value="{{ d }}" {% if d == days %}selected{% endif %}>{{ name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <noscript><button class="btn quiet">Apply</button></noscript>
+    <span class="synced">{% if fetched_at %}Updated {{ fetched_at | ago }}.{% endif %} <a href="/settings">Sync settings</a></span>
+  </form>
+{% endset %}
+{% macro bars(data, key, label, prefix="") %}
+  {% set mx = data | map(attribute=key) | max %}
+  {% set mx = mx if mx and mx > 0 else 1 %}
+  <svg class="chart" viewBox="0 0 {{ data | length }} 100" preserveAspectRatio="none" role="img" aria-label="{{ label }}">
+    {% for d in data %}
+      <rect x="{{ loop.index0 + 0.12 }}" width="0.76" y="{{ 100 - d[key] / mx * 100 }}" height="{{ [d[key] / mx * 100, 0.6] | max }}"><title>{{ d.day }}: {{ prefix }}{{ d[key] | num(2 if prefix else 0) }}</title></rect>
+    {% endfor %}
+  </svg>
+  <div class="axis"><span>{{ data[0].day }}</span><span>{{ data[-1].day }}</span></div>
+{% endmacro %}
+
+{% if needs_reconnect %}
+  <section class="panel narrow">
+    <h2>Allow analytics access</h2>
+    <p class="muted">This channel was connected before analytics existed in YTStudio, so Google hasn't given permission to read its stats yet.</p>
+    <a class="btn" href="/connect">Reconnect {{ current.title }}</a>
+  </section>
+{% elif not_synced %}
+  <section class="panel narrow">
+    <h2>Analytics not fetched yet</h2>
+    <form method="post" action="/settings/run/sync_analytics"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn quiet">Fetch now</button></form>
+  </section>
+{% elif sync_error %}
+  {{ period_form }}
+  <section class="panel narrow">
+    <h2>Couldn't fetch analytics</h2>
+    <p class="err-text">{{ sync_error | urlize }}</p>
+    <form method="post" action="/settings/run/sync_analytics"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn quiet">Fetch now</button></form>
+  </section>
+{% else %}
+  {{ period_form }}
+  <section class="panel stats">
+    <div><span>Subscribers</span><strong>{{ current.subscribers | num }}</strong><em>all time</em></div>
+    <div><span>Views</span><strong>{{ totals.views | num }}</strong><em>{{ current.views | num }} all time</em></div>
+    <div><span>Watch time</span><strong>{{ ((totals.estimatedMinutesWatched or 0) / 60) | num(1) }} h</strong><em>avg view {{ totals.averageViewDuration | dur }}</em></div>
+    {% set net = (totals.subscribersGained or 0) - (totals.subscribersLost or 0) %}
+    <div><span>New subscribers</span><strong>{{ "+" if net > 0 }}{{ net | num }}</strong><em>{{ totals.subscribersGained | num }} gained, {{ totals.subscribersLost | num }} lost</em></div>
+    <div><span>Likes</span><strong>{{ totals.likes | num }}</strong><em>{{ totals.comments | num }} comments, {{ totals.shares | num }} shares</em></div>
+  </section>
+  <section class="panel">
+    <h2>Daily views</h2>
+    {% if daily %}{{ bars(daily, "views", "Views per day") }}{% else %}<p class="muted">No views in this period yet. YouTube takes 2 to 3 days to report new data.</p>{% endif %}
+  </section>
+  <section class="panel money">
+    <h2>Monetization</h2>
+    {% if monetized %}
+      <p class="status on">Monetized. Revenue data is available for this channel.</p>
+      <div class="earn">
+        <div><span>Estimated revenue</span><strong>{{ sym }}{{ revenue.estimatedRevenue | num(2) }}</strong><em>Your share, after YouTube's cut</em></div>
+        <dl>
+          <dt>Ads</dt><dd>{{ sym }}{{ revenue.estimatedAdRevenue | num(2) }}</dd>
+          <dt>YouTube Premium</dt><dd>{{ sym }}{{ revenue.estimatedRedPartnerRevenue | num(2) }}</dd>
+          <dt>Gross ad revenue</dt><dd>{{ sym }}{{ revenue.grossRevenue | num(2) }}</dd>
+          <dt>CPM</dt><dd>{{ sym }}{{ revenue.cpm | num(2) }}</dd>
+          <dt>Playback CPM</dt><dd>{{ sym }}{{ revenue.playbackBasedCpm | num(2) }}</dd>
+          <dt>Monetized playbacks</dt><dd>{{ revenue.monetizedPlaybacks | num }}</dd>
+        </dl>
+      </div>
+      {% if revenue_daily %}{{ bars(revenue_daily, "estimatedRevenue", "Revenue per day", sym) }}{% endif %}
+      <p class="hint">These are estimates. The money actually paid to your bank is shown in <a href="https://www.google.com/adsense/" target="_blank" rel="noopener">Google AdSense</a>.</p>
+    {% elif monetized is none %}
+      <p class="status">Revenue permission wasn't given when this channel was connected.</p>
+      <a class="btn quiet" href="/connect">Reconnect and allow revenue</a>
+    {% else %}
+      <p class="status off">Not monetized</p>
+      <p class="muted">YouTube reported no revenue for this channel in the selected period.</p>
+    {% endif %}
+  </section>
+  <section class="panel">
+    <h2>Top videos</h2>
+    {% if top %}
+      <div class="table-wrap"><table>
+        <thead><tr><th>Video</th><th>Views</th><th>Watch time</th><th>Avg view</th><th>Likes</th></tr></thead>
+        <tbody>{% for v in top %}<tr><td><a href="/insights/video/{{ v.video }}">{{ v.title }}</a></td><td>{{ v.views | num }}</td><td>{{ (v.estimatedMinutesWatched / 60) | num(1) }} h</td><td>{{ v.averageViewDuration | dur }}</td><td>{{ v.likes | num }}</td></tr>{% endfor %}</tbody>
+      </table></div>
+    {% else %}<p class="muted">No video views in this period yet.</p>{% endif %}
+  </section>
+{% endif %}
+
+<section class="panel">
+  <h2>Uploads, last 90 days</h2>
+  {% if videos %}
+  <p class="muted">× median compares each long-form video's views with your long-form median ({{ median | num if median else "not enough videos" }}). CTR and impressions show only when YouTube's API provides them for your channel.</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Video</th><th>Views</th><th>× median</th><th>Avg view</th><th>Avg %</th><th>CTR</th><th>Retention</th></tr></thead>
+    <tbody>{% for v in videos %}<tr>
+      <td><a href="/insights/video/{{ v.id }}">{{ v.title }}</a>{% if v.duration_s <= 180 %} <span class="tag">Short</span>{% endif %}</td>
+      <td>{{ v.views | num }}</td><td>{{ (v.multiple ~ "×") if v.multiple is not none and v.duration_s > 180 else "–" }}</td>
+      <td>{{ v.avg_view_duration | dur if v.avg_view_duration is not none else "–" }}</td>
+      <td>{{ (v.avg_view_pct | num(1) ~ "%") if v.avg_view_pct is not none else "–" }}</td>
+      <td>{{ (v.ctr | num(1) ~ "%") if v.ctr is not none else "not available" }}</td>
+      <td>{{ "chart" if v.retention else "–" }}</td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  {% else %}<p class="muted">Video-level data arrives after the first upload sync (every 30 minutes) and the daily analytics refresh.</p>{% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="empty">
+  <h1>Add your first channel</h1>
+  <p>Sign in with the Google account that owns the channel. You can add more channels later with the + button.</p>
+  <p class="muted">YTStudio asks for read-only YouTube and Analytics access plus captions access for your own videos{% if flags.publish %} (the same scope lets the Publish page upload when you ask it to){% endif %}.</p>
+  <a class="btn" href="/connect">Add YouTube account</a>
+</section>
+{% endblock %}

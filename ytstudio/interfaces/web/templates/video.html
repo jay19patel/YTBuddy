@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}{{ v.title }}{% endblock %}
+{% block content %}
+<header><h1>{{ v.title }}</h1><span class="sub"><a href="https://youtu.be/{{ v.id }}" target="_blank" rel="noopener">Watch</a> · <a href="/insights">Back to insights</a></span></header>
+<section class="panel stats">
+  <div><span>Views</span><strong>{{ v.views | num }}</strong></div>
+  <div><span>Avg view</span><strong>{{ v.avg_view_duration | dur if v.avg_view_duration is not none else "–" }}</strong><em>of {{ v.duration_s | dur }}</em></div>
+  <div><span>Avg % viewed</span><strong>{{ (v.avg_view_pct | num(1) ~ "%") if v.avg_view_pct is not none else "–" }}</strong></div>
+  <div><span>CTR</span><strong>{{ (v.ctr | num(1) ~ "%") if v.ctr is not none else "–" }}</strong><em>{{ "" if v.ctr is not none else "not available from the API" }}</em></div>
+</section>
+<section class="panel">
+  <h2>Audience retention</h2>
+  {% if points %}
+    {% set mx = [points | map(attribute="watch_ratio") | max, 1] | max %}
+    <svg class="retention" viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label="Share of viewers still watching across the video">
+      <line x1="0" y1="{{ 100 - 100 / mx }}" x2="100" y2="{{ 100 - 100 / mx }}"></line>
+      <polyline points="{% for p in points %}{{ p.ratio * 100 }},{{ 100 - p.watch_ratio / mx * 100 }} {% endfor %}"></polyline>
+    </svg>
+    <div class="axis"><span>0:00</span><span>{{ v.duration_s | dur }}</span></div>
+    <p class="hint">The line is the share of viewers still watching (audienceWatchRatio). The grey rule is 100%: values above it mean rewatches.</p>
+    {% if analysis and analysis.available %}
+      <h3>What the retention reader found</h3>
+      <dl class="kv">
+        <dt>Hook leak</dt><dd>{{ analysis.hook_leak }} points lost in the opening</dd>
+        <dt>Slide</dt><dd>{{ analysis.slide_per_unit }} per % across the middle</dd>
+        <dt>Cliffs</dt><dd>{% for c in analysis.cliffs %}−{{ c.lost }} at {{ c.at_seconds | dur if c.at_seconds is not none else c.from ~ "%" }}{% if not loop.last %}, {% endif %}{% else %}none steep{% endfor %}</dd>
+      </dl>
+    {% endif %}
+  {% else %}<p class="muted">No retention data yet. It is fetched daily for your recent videos; YouTube needs a few days of views first.</p>{% endif %}
+</section>
+{% endblock %}

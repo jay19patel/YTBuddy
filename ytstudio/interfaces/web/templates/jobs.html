@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% import "macros.html" as m with context %}
+{% block title %}Jobs{% endblock %}
+{% block content %}
+<header><h1>Jobs</h1><span class="sub"><a href="/health">Health JSON</a></span></header>
+
+<section class="panel stats">
+  <div><span>LLM cost today</span><strong>${{ costs.today | num(2) }}</strong><em>budget ${{ budget | num(2) }}/day</em></div>
+  <div><span>LLM cost, 7 days</span><strong>${{ costs.week | num(2) }}</strong></div>
+  <div><span>YouTube quota today</span><strong>{{ quota_used | num }}</strong><em>of {{ quota_limit | num }} units (Pacific day)</em></div>
+  {% for name in ["beat", "worker_io", "worker_llm", "worker_media", "redis", "postgres"] %}{% set h = health.get(name, {}) %}
+  <div><span>{{ name | replace("_", " ") }}</span><strong class="pill {{ 'ok' if h.ok else 'err' }}">{{ "OK" if h.ok else "Down" }}</strong>{% if h.last_tick or h.last_seen %}<em>{{ ((h.last_tick or h.last_seen) | string)[11:19] }} UTC</em>{% endif %}</div>
+  {% endfor %}
+</section>
+
+<section class="panel">
+  <h2>Pipeline runs</h2>
+  {% if runs %}
+  <div class="table-wrap"><table>
+    <thead><tr><th>Run</th><th>Status</th><th>Steps</th><th>Started</th><th></th></tr></thead>
+    <tbody>{% for r in runs %}<tr>
+      <td><strong>#{{ r.id }} {{ r.pipeline }}</strong><br><span class="muted">{{ r.idem_key }}</span></td>
+      <td><span class="pill {{ 'ok' if r.status == 'done' else 'err' if r.status in ('failed', 'skipped') else 'run' }}">{{ r.status }}</span>{% if r.error %}<div class="err-text">{{ r.error }}</div>{% endif %}</td>
+      <td class="wrap">{% for s in r.steps %}<span class="tag {{ 'approved' if s.status == 'done' else 'needs_review' }}" title="{{ s.error or '' }}">{{ s.step }}{% if s.attempts > 1 %} ×{{ s.attempts }}{% endif %}</span> {% endfor %}
+        {% for s in r.steps if s.error %}<details><summary class="muted">{{ s.step }} log</summary><pre class="copyable">{{ s.error }}</pre></details>{% endfor %}</td>
+      <td>{{ r.created_at | ago }}</td>
+      <td>{% if r.status in ("failed", "skipped") %}{{ m.post("/jobs/runs/" ~ r.id ~ "/retry", "Retry") }}{% endif %}</td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  {% else %}<p class="muted">No runs yet.</p>{% endif %}
+</section>
+
+<section class="panel">
+  <h2>Dead letters</h2>
+  <p class="muted">Steps that failed for a reason retrying won't fix. Retry resumes the run from the failed step after you fix the cause.</p>
+  {% if dead %}
+  <div class="table-wrap"><table>
+    <thead><tr><th>Step</th><th>Error</th><th>When</th><th></th></tr></thead>
+    <tbody>{% for d in dead %}<tr><td>{{ d.step }}<br><span class="muted">run #{{ d.run_id }}</span></td><td class="wrap err-text">{{ d.error }}</td><td>{{ d.created_at | ago }}</td>
+      <td>{{ m.post("/jobs/runs/" ~ d.run_id ~ "/retry", "Retry") }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% else %}<p class="muted">None.</p>{% endif %}
+</section>
+
+<section class="panel">
+  <h2>LLM cost, last 7 days</h2>
+  <div class="split">
+    {% for title, rows in [("By alias", costs.by_alias), ("By step", costs.by_step)] %}
+    <div class="table-wrap"><table><thead><tr><th>{{ title }}</th><th>Calls</th><th>Cached</th><th>Tokens in/out</th><th>Cost</th></tr></thead>
+      <tbody>{% for r in rows %}<tr><td>{{ r.key }}</td><td>{{ r.calls }}</td><td>{{ r.cached }}</td><td>{{ r.in | short }}/{{ r.out | short }}</td><td>${{ r.cost | num(3) }}</td></tr>{% endfor %}</tbody></table></div>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="panel">
+  <h2>Background syncs</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Job</th><th>Status</th><th>Last run</th></tr></thead>
+    <tbody>{% for j in jobs_status %}<tr><td>{{ j.name }}</td>
+      <td>{% if j.running %}<span class="pill run">Running</span>{% elif j.paused %}<span class="pill">Paused</span>{% else %}<span class="pill ok">Scheduled</span>{% endif %}</td>
+      <td class="wrap">{% if j.last %}<span class="pill {{ 'ok' if j.last.status == 'ok' else 'err' }}">{{ j.last.status }}</span> {{ j.last.started_at | ago }}{% if j.last.status == "error" %}<div class="err-text">{{ j.last.message }}</div>{% endif %}{% else %}<span class="muted">Never</span>{% endif %}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  <p class="hint">Flower (Celery's own monitor) runs behind a password on port 5555; see OPERATIONS.md.</p>
+</section>
+{% endblock %}
