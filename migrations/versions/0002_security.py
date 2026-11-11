@@ -20,6 +20,7 @@ depends_on = None
 
 
 def upgrade() -> None:
+    require_key_if_needed()
     op.create_table(
         "user",
         sa.Column("id", sa.Integer(), primary_key=True),
@@ -54,6 +55,17 @@ def upgrade() -> None:
         b.create_index("ix_channel_user_id", ["user_id"])
 
     encrypt_tokens()
+
+
+def require_key_if_needed() -> None:
+    """Fail before changing anything when tokens must be encrypted but no key is set."""
+    from ytstudio.adapters.token_vault import PREFIX, TokenCipher
+    from ytstudio.config import get_settings
+
+    creds = [r[0] for r in op.get_bind().execute(sa.text("SELECT creds FROM channel"))]
+    folder = get_settings().legacy_tokens_dir
+    if any(not c.startswith(PREFIX) for c in creds) or (folder.is_dir() and any(folder.glob("*.json"))):
+        TokenCipher(get_settings().token_encryption_key)  # raises with instructions when unset
 
 
 def encrypt_tokens() -> None:

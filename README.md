@@ -9,42 +9,29 @@ A self-hosted research and content-prep assistant for your YouTube channels. Eve
 
 **Nothing is ever published.** Everything lands in a review queue as "needs review". You record, edit, design and upload yourself. Numbers shown are real numbers from the APIs; nothing predicts views.
 
-## Quick start: one command
+## Run it
+
+Everything runs with Docker Compose: website, workers, scheduler, Postgres, Redis.
+
+1. Install and open Docker Desktop.
+2. Put `YTStudioCred.json` (Google OAuth client, see below) in this folder.
+3. `cp .env.example .env` and fill in: `TOKEN_ENCRYPTION_KEY`, `ALLOWED_EMAILS`, `GEMINI_API_KEY`, `MISTRAL_API_KEY`, and the passwords (`POSTGRES_PASSWORD`, `REDIS_PASSWORD`, `FLOWER_PASSWORD`; letters and digits only).
+4. Start everything:
 
 ```bash
-./dev.sh        # backs up ytstudio.db (backups/), migrates, then runs web + worker + beat; Ctrl+C stops all
+docker compose up -d --build     # first time builds images (several minutes; the Whisper image is large)
+docker compose ps                # all services "healthy" / "running"
+docker compose logs -f api       # follow a service's log
+docker compose down              # stop (data stays in Docker volumes)
 ```
 
-Needs Redis (`brew services start redis`) and FFmpeg. Open http://localhost:8000.
+5. Open <http://localhost:8000>, sign in with Google, add your channel, confirm Settings, then press **Run today's brief now** on Today.
 
-## Run it locally (no Docker), step by step
-
-Needs Python 3.12, [uv](https://docs.astral.sh/uv/), Redis, and FFmpeg (`brew install redis ffmpeg`).
-
-```bash
-cp .env.example .env          # fill in: TOKEN_ENCRYPTION_KEY, ALLOWED_EMAILS, GEMINI_API_KEY, MISTRAL_API_KEY
-uv sync
-uv run python -m ytstudio.cli migrate                                   # creates/upgrades the database
-uv run main.py                                                          # web app on http://localhost:8000
-uv run celery -A ytstudio.interfaces.worker worker -Q io,llm,media -c 4 # jobs
-uv run celery -A ytstudio.interfaces.worker beat                        # schedule ticks (run exactly one)
-```
-
-The default database is SQLite (`ytstudio.db`), fine for one person on one machine. Master files, rendered Shorts and covers are stored on local disk in `media/`. There are no email or Telegram notifications: failures show on the Jobs page, and a channel that needs reconnecting shows a banner. For Whisper (used when a video has no captions): `uv sync --extra media`.
-
-## Run it with Docker
-
-```bash
-cp .env.example .env   # fill it in; set SITE_ADDRESS to your domain for automatic HTTPS
-# YTStudioCred.json must sit next to docker-compose.yml (mounted read-only)
-docker compose up -d --build
-```
-
-Services: `web` (Caddy, the only published port), `api`, `worker-io`, `worker-llm`, `worker-media`, `beat`, `flower` (127.0.0.1:5555, password), `postgres`, `redis` (password, not published). Masters and Shorts are stored on the local `media` volume, shared by api and workers. Moving an existing SQLite database into Postgres: `python -m ytstudio.cli copy-sqlite ytstudio.db` with `DATABASE_URL` pointing at the Postgres database.
+Services: `web` (Caddy, the only published port, 8000), `api` (runs migrations on start), `worker-io`, `worker-llm`, `worker-media`, `beat`, `flower` (<http://127.0.0.1:5555>, password), `postgres`, `redis` (password, not published). Master files and Shorts live on the `media` volume.
 
 ## Upgrading from the old single-file app
 
-`python -m ytstudio.cli migrate` recognises the old database, keeps every row, encrypts the stored Google tokens with `TOKEN_ENCRYPTION_KEY`, and imports `tokens/*.json` once. Then delete `tokens/`. Sign in with an email from `ALLOWED_EMAILS`: the first user to sign in owns the channels that were connected before logins existed.
+Docker starts with a fresh Postgres; the old `ytstudio.db` is not needed. Add your channel again after signing in: the old sidebar stats and analytics are fetched again automatically. (To carry the old file over anyway: `DATABASE_URL=sqlite:///ytstudio.db uv run python -m ytstudio.cli migrate`, then `copy-sqlite` into Postgres. It encrypts the old tokens and needs `TOKEN_ENCRYPTION_KEY`.) Delete `tokens/` once you no longer need the old app.
 
 ## Google Cloud setup (once)
 

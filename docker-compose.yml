@@ -75,10 +75,12 @@ services:
     depends_on: {redis: {condition: service_healthy}}
     healthcheck: {disable: true}
 
-  web:  # the only published service: TLS + reverse proxy in front of api
+  web:  # the only published service: reverse proxy in front of api (automatic HTTPS when SITE_ADDRESS is a domain)
     image: caddy:2.10.2-alpine
     command: caddy reverse-proxy --from ${SITE_ADDRESS:-:80} --to api:8000
-    ports: ["80:80", "443:443"]
+    # Host port 8000 matches BASE_URL=http://localhost:8000 and the Google redirect URI. On a server with a
+    # domain, set WEB_PORT=80 and SITE_ADDRESS=your.domain (443 is for HTTPS).
+    ports: ["${WEB_PORT:-8000}:80", "443:443"]
     volumes: [caddy:/data]
     depends_on: {api: {condition: service_healthy}}
     restart: unless-stopped

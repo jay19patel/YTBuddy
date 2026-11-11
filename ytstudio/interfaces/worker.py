@@ -18,7 +18,7 @@ from typing import Any
 from celery import Celery, Task, chord, group, signature
 from celery.exceptions import SoftTimeLimitExceeded
 from celery.schedules import crontab
-from celery.signals import setup_logging, worker_shutting_down
+from celery.signals import beat_init, setup_logging, worker_shutting_down
 
 from ytstudio.config import get_settings
 from ytstudio.container import get_container
@@ -73,6 +73,12 @@ MAX_TRANSIENT = {"io": 5, "llm": 2, "media": 2}  # LLM: the Router already retri
 @setup_logging.connect
 def _logging(**_: Any) -> None:
     _setup(s.log_level, s.log_json)
+
+
+@beat_init.connect
+def _first_tick(**_: Any) -> None:
+    # Tick once at start: health turns green and due schedules dispatch now, not 5 minutes later.
+    celery_app.send_task("beat.tick", queue="io", expires=290)
 
 
 @worker_shutting_down.connect
