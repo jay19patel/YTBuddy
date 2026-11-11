@@ -24,7 +24,7 @@
 ## Health and alerts
 
 - `GET /health` returns Postgres, Redis, Beat (last tick), and per-queue worker heartbeats. `GET /health/<part>` returns 503 when that part is down. Docker healthchecks use `python -m ytstudio.cli health <part>`.
-- Beat ticks every 5 minutes and writes `yt:beat:tick`. If there is no tick for `BEAT_STALE_MINUTES` (default 15), the api sends every user one `BeatStale` notification.
+- Beat ticks every 5 minutes and writes `yt:beat:tick`. If there is no tick for `BEAT_STALE_MINUTES` (default 15), the api logs a `BeatStale` warning once, and `/health/beat` returns 503 (the Docker healthcheck marks `beat` unhealthy).
 - The Jobs page shows run and step status, step errors, dead letters, LLM cost (today, 7 days, by alias and step), today's YouTube quota use, and health.
 
 ## Dead letters
@@ -44,13 +44,13 @@ Data API units are counted in Redis per Pacific day before each call. Non-critic
 
 If a key is lost, the tokens can't be decrypted. Affected channels show "reconnect needed": reconnect each one.
 
-**Google client secret:** rotate it in Cloud Console, update `.env`, restart. Stored tokens don't contain the secret, so nothing else changes.
+**Google client secret:** rotate it in Cloud Console, download the new JSON over `YTStudioCred.json`, restart. Stored tokens don't contain the secret, so nothing else changes.
 
-**LLM keys, SMTP, Telegram, Flower, Redis, Postgres passwords:** update `.env` and restart the affected services. For Redis and Postgres, change the password in the service first.
+**LLM keys (Gemini, Mistral), Flower, Redis, Postgres passwords:** update `.env` and restart the affected services. For Redis and Postgres, change the password in the service first.
 
 ## Backups
 
-Back up Postgres (`pg_dump`) and the MinIO volume (master files, rendered Shorts). Redis holds only caches, locks and counters; losing it is safe, though in-flight tasks are redelivered or need a retry.
+Back up Postgres (`pg_dump`), the `media` volume or `media/` folder (master files, rendered Shorts, covers), and `YTStudioCred.json`. Redis holds only caches, locks and counters; losing it is safe, though in-flight tasks are redelivered or need a retry.
 
 ## Upgrading
 

@@ -17,7 +17,7 @@ domain/       models.py  errors.py  events.py  schedule.py (DST)  metrics.py    
     ▲
 adapters/     youtube.py (facade: OAuth + Data + Analytics + quota + error mapping)   trends.py
               llm.py (LiteLLM Router)   prompts.py   vendor_skills.py   media.py (FFmpeg, Pillow, whisper)
-              storage.py (local, S3)   notify.py   redis_kv.py   token_vault.py   celery_dispatcher.py
+              storage.py (local disk)   notify.py   redis_kv.py   token_vault.py   celery_dispatcher.py
               persistence/ (tables, repos + unit of work, read-model queries, web sessions)
 ```
 
@@ -50,12 +50,12 @@ DB 0 is the Celery broker and DB 1 the Celery results. DB 2 is the app's (`REDIS
 
 ## Patterns, and why they are here
 
-- **Strategy:** trend providers, storage (local or S3), transcriber, LLM model choice (aliases).
+- **Strategy:** trend providers, transcriber, LLM model choice (aliases). Storage is one local-disk adapter behind a port, so another backend could be added later without touching use cases.
 - **Registry + Template Method:** pipeline steps.
 - **Repository + Unit of Work:** persistence.
 - **Adapter:** Google, LiteLLM, Celery, the vendored tools.
 - **Facade:** `YouTubeGateway` over the Data and Analytics APIs.
-- **Domain events:** `BriefReady`, `ShortsReady`, `JobFailed`, `ChannelNeedsReconnect`, `BudgetReached` and `BeatStale` go to in-app, email and Telegram notifiers.
+- **Domain events:** `BriefReady`, `ShortsReady`, `JobFailed`, `ChannelNeedsReconnect`, `BudgetReached` and `BeatStale` are written to the log by `LogNotifier` (no in-app, email or Telegram messages). Failures are visible on the Jobs page; a channel needing reconnection shows a banner.
 
 ## Guide: add a trend provider
 
@@ -71,10 +71,10 @@ It then runs in parallel with the other providers (chord), is deduped, and is ra
 ```python
 # ytstudio/application/steps_daily.py (or a new module imported in container.py)
 @register
-class SummariseComments(LLMStep):          # LLMStep: queue = llm, plus self.ask(...)
+class SummariseComments(LLMStep):  # LLMStep: queue = llm, plus self.ask(...)
     name = "summarise_comments"
-    needs = ("sync_channel",)               # outputs it reads
-    critical = False                        # stops when the daily LLM budget is reached
+    needs = ("sync_channel",)  # outputs it reads
+    critical = False  # stops when the daily LLM budget is reached
 
     def run(self, ctx: Context) -> dict[str, Any]:
         out = self.ask(ctx, "fast", "summarise_comments", {"x": ctx.out("sync_channel")}, MySchema)
@@ -85,7 +85,7 @@ Then add `"summarise_comments"` to a pipeline in `config/pipelines.toml`, add `p
 
 ## Guide: add an LLM provider or model
 
-1. Put the key in `.env` (LiteLLM reads `OPENAI_API_KEY`, `GEMINI_API_KEY`, and so on).
+1. Put the key in `.env` (LiteLLM reads `GEMINI_API_KEY`, `MISTRAL_API_KEY`, `OPENAI_API_KEY`, and so on).
 2. In `config/llm.toml`, add the model to an alias's `models` list (`"provider/model"`), in fallback order. Add a `[prices."provider/model"]` entry if LiteLLM's price map lacks it, and a `[rate_limits.provider]` bucket.
 3. Restart the workers. No code changes: code only names the aliases `fast`, `smart` and `long`.
 4. To add a new alias, add `[aliases.new]` and use it in a step's `self.ask(ctx, "new", ...)`.

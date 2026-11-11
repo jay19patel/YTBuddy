@@ -1,4 +1,4 @@
-"""Jobs, settings, notifications, health, and the pre-existing manual publish pages."""
+"""Jobs, settings, health, and the pre-existing manual publish pages."""
 
 import json
 import os
@@ -124,8 +124,6 @@ def settings_page(p: Page = Depends(page)) -> Response:
         llm=c.llm_config["aliases"],
         proxy=bool(s.litellm_proxy_url),
         flags={"publish": s.enable_manual_publish, "ytdlp": s.enable_ytdlp, "auto_publish": s.enable_auto_publish},
-        email_ready=bool(s.smtp_host),
-        telegram_ready=bool(s.telegram_bot_token),
     )
 
 
@@ -206,34 +204,17 @@ def detect(p: Page = Depends(csrf)) -> Response:
 @router.post("/settings/profile")
 def save_profile(
     voice_md: str = Form(""),
-    notify_email: bool = Form(False),
-    telegram_chat_id: str = Form(""),
     daily_budget_usd: float = Form(2.0),
     p: Page = Depends(csrf),
 ) -> Response:
     c = get_container()
     with c.uow() as uow:
         u = uow.users.get(p.user.id)
-        u.voice_md, u.notify_email = voice_md[:20000], notify_email
-        u.telegram_chat_id = telegram_chat_id.strip() or None
+        u.voice_md = voice_md[:20000]
         u.daily_budget_usd = min(max(daily_budget_usd, 0.0), 1000.0)
         uow.users.update(u)
         uow.commit()
     return back("/settings", "saved")
-
-
-# ----- notifications -----
-
-
-@router.get("/notifications")
-def notifications(p: Page = Depends(page)) -> Response:
-    return render(p, "notifications.html", items=queries().notifications(p.user.id))
-
-
-@router.post("/notifications/read")
-def mark_read(p: Page = Depends(csrf)) -> Response:
-    queries().mark_read(p.user.id)
-    return back("/notifications")
 
 
 # ----- manual publish (pre-existing feature; uploads are always started by you) -----

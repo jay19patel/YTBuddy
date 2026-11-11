@@ -79,7 +79,6 @@ def test_all_pages_render_with_a_brief(container, user_and_channel, db_url):
         "/jobs",
         "/settings",
         "/insights",
-        "/notifications",
         "/shorts",
         "/insights/video/own0",
     ):

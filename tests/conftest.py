@@ -1,17 +1,21 @@
+import json
 import os
 import shutil
+import tempfile
 from pathlib import Path
 
 import pytest
 from cryptography.fernet import Fernet
 
 KEY = Fernet.generate_key().decode()
+CLIENT_JSON = os.path.join(tempfile.mkdtemp(), "YTStudioCred.json")  # same shape as Cloud Console's download
+with open(CLIENT_JSON, "w") as f:
+    json.dump({"web": {"client_id": "cid.apps.googleusercontent.com", "client_secret": "csecret"}}, f)
 os.environ.update(
     {
         "TOKEN_ENCRYPTION_KEY": KEY,
         "ALLOWED_EMAILS": "me@example.com,other@example.com",
-        "GOOGLE_CLIENT_ID": "cid.apps.googleusercontent.com",
-        "GOOGLE_CLIENT_SECRET": "csecret",
+        "GOOGLE_CLIENT_SECRETS_FILE": CLIENT_JSON,
         "BASE_URL": "http://testserver",
         "REDIS_URL": "redis://localhost:6379/15",
         "CELERY_BROKER_URL": "redis://localhost:6379/13",  # tests never touch the dev broker

@@ -184,20 +184,9 @@ class Container:
 
     @cached_property
     def storage(self) -> Any:
-        from ytstudio.adapters.storage import LocalStorage, S3Storage
+        from ytstudio.adapters.storage import LocalStorage
 
-        def build() -> Any:
-            if self.s.storage_backend == "s3":
-                return S3Storage(
-                    self.s.s3_endpoint_url,
-                    self.s.s3_bucket,
-                    self.s.s3_access_key,
-                    self.s.s3_secret_key,
-                    self.s.media_dir / ".s3cache",
-                )
-            return LocalStorage(self.s.media_dir)
-
-        return self._pick("storage", build)
+        return self._pick("storage", lambda: LocalStorage(self.s.media_dir))
 
     @cached_property
     def media(self) -> Any:
@@ -216,19 +205,9 @@ class Container:
 
     @cached_property
     def events(self) -> Events:
-        from ytstudio.adapters.notify import EmailNotifier, FanOutNotifier, InAppNotifier, TelegramNotifier
+        from ytstudio.adapters.notify import LogNotifier
 
-        notifier = self._pick(
-            "notifier",
-            lambda: FanOutNotifier(
-                [
-                    InAppNotifier(self.uow),
-                    EmailNotifier(self.s),
-                    TelegramNotifier(self.s.telegram_bot_token, self.s.base_url),
-                ]
-            ),
-        )
-        return Events(self.uow, notifier)
+        return Events(self.uow, self._pick("notifier", LogNotifier))
 
     # ----- application -----
 

@@ -27,15 +27,15 @@ class Prompts:
 
 
 def cfg(primary, fallback=None):
-    models = ["anthropic/claude-haiku-5-5"] + (["anthropic/claude-sonnet-5-5"] if fallback is not None else [])
+    models = ["gemini/gemini-flash-latest"] + (["mistral/mistral-small-latest"] if fallback is not None else [])
     params = {
         "aliases": {"fast": {"models": models}},
         "defaults": {"num_retries": 0, "timeout_s": 5},
         "prices": {
-            "anthropic/claude-haiku-5-5": {"input": 0.1, "output": 0.5},
-            "anthropic/claude-sonnet-5-5": {"input": 2.0, "output": 10.0},
+            "gemini/gemini-flash-latest": {"input": 0.1, "output": 0.5},
+            "mistral/mistral-small-latest": {"input": 2.0, "output": 10.0},
         },
-        "rate_limits": {"anthropic": {"rate": 100, "burst": 100}},
+        "rate_limits": {"gemini": {"rate": 100, "burst": 100}},
     }
     router = build_router(params)
     # inject mock responses per deployment
@@ -107,7 +107,7 @@ def test_regenerate_bypasses_cache(adapter_factory, container, user_and_channel)
 def test_fallback_model_answers_when_primary_fails(adapter_factory, user_and_channel, container):
     llm, _ = adapter_factory(Exception("primary down"), '{"answer": "from fallback"}')
     assert llm.generate(req(user_and_channel[0]), Out).answer == "from fallback"
-    assert "sonnet" in calls(container)[-1].model
+    assert "mistral" in calls(container)[-1].model
 
 
 def test_router_giving_up_is_one_transient_error(adapter_factory, user_and_channel):
@@ -156,7 +156,7 @@ def test_extract_json():
 
 
 def test_proxy_mode_routes_aliases_to_proxy():
-    r = build_router({"aliases": {"smart": {"models": ["anthropic/claude-opus-5-5", "x/y"]}}}, "http://proxy:4000", "k")
+    r = build_router({"aliases": {"smart": {"models": ["gemini/gemini-pro-latest", "x/y"]}}}, "http://proxy:4000", "k")
     dep = r.model_list[0]
     assert dep["model_name"] == "smart" and dep["litellm_params"]["model"] == "litellm_proxy/smart"
     assert len(r.model_list) == 1
@@ -169,3 +169,24 @@ def test_shipped_config_uses_aliases_only():
     c = load_llm_config(ROOT / "config" / "llm.toml")
     assert set(c["aliases"]) == {"fast", "smart", "long"}
     assert all(len(a["models"]) >= 2 for a in c["aliases"].values())
+
+
+def test_shipped_config_is_gemini_and_mistral_only():
+    from ytstudio.adapters.llm import load_llm_config
+    from ytstudio.config import ROOT
+
+    c = load_llm_config(ROOT / "config" / "llm.toml")
+    models = {m for a in c["aliases"].values() for m in a["models"]}
+    assert {m.split("/")[0] for m in models} == {"gemini", "mistral"}
+    assert models <= set(c["prices"]) and set(c["rate_limits"]) == {"gemini", "mistral"}
+
+
+def test_resolved_model_name_falls_back_to_alias_price(adapter_factory, user_and_channel, container, monkeypatch):
+    llm, _ = adapter_factory('{"answer": "x"}')
+    import litellm
+
+    monkeypatch.setattr(litellm, "completion_cost", lambda **kw: (_ for _ in ()).throw(ValueError("unknown")))
+    resp = type("R", (), {})()
+    assert (
+        llm._cost(resp, "gemini-9-pro-preview", (1_000_000, 0), "fast") == 0.1
+    )  # test config: flash input is 0.10 per 1M

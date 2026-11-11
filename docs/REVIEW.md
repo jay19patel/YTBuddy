@@ -266,3 +266,10 @@ Your instruction was "do all things", so the open questions were settled with th
 - **gitleaks / secret scanning**: not wired into CI. Turn on GitHub secret scanning or add a pre-commit hook.
 - **Per-user LLM budget day** is the UTC day, not the user's time zone.
 - **Commit granularity**: the work was built in one pass, so the commits are grouped by purpose. Only the final commit was verified as a whole; intermediate commits are not individually guaranteed runnable.
+
+### Follow-up decisions (2026-11-11)
+
+- **Google client:** read only from `YTStudioCred.json`, as before the rewrite. The env-var option was removed.
+- **Storage:** local disk only (`MEDIA_DIR`). S3/MinIO and boto3 were removed.
+- **LLM:** Gemini (`gemini-pro-latest` / `gemini-flash-latest`) with Mistral (`mistral-large-latest` / `mistral-small-latest`) as fallback. Prices in `config/llm.toml` are conservative estimates from third-party sources and need checking against the official pricing pages.
+- **Notifications:** removed entirely (in-app, email, Telegram; migration `0004`). Events are logged. Job failures show on the Jobs page; reconnect-needed shows a banner; a stale Beat shows in `/health` and the Jobs page.

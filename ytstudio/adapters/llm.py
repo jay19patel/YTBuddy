@@ -186,22 +186,31 @@ class LiteLLMAdapter:
         tokens = (int(getattr(usage, "prompt_tokens", 0) or 0), int(getattr(usage, "completion_tokens", 0) or 0))
         model = str(getattr(resp, "model", alias))
         self._record(
-            meta, model=model, cost=self._cost(resp, model, tokens), tokens=tokens, latency_ms=latency, cache_hit=False
+            meta,
+            model=model,
+            cost=self._cost(resp, model, tokens, alias),
+            tokens=tokens,
+            latency_ms=latency,
+            cache_hit=False,
         )
         return str(resp.choices[0].message.content or "")
 
-    def _cost(self, resp: Any, model: str, tokens: tuple[int, int]) -> float:
+    def _cost(self, resp: Any, model: str, tokens: tuple[int, int], alias: str) -> float:
+        """Configured price for the model; else LiteLLM's price map; else the alias's primary model price.
+        "-latest" aliases come back under the resolved model name, so the last fallback keeps the budget honest."""
         prices = self.cfg.get("prices", {})
         price = next((p for name, p in prices.items() if name == model or name.split("/")[-1] == model), None)
-        if price:
-            return (tokens[0] * price["input"] + tokens[1] * price["output"]) / 1_000_000
-        try:
-            from litellm import completion_cost
+        if not price:
+            try:
+                from litellm import completion_cost
 
-            return float(completion_cost(completion_response=resp))
-        except Exception:  # unknown model: record 0 and say so in the log rather than guess
+                return float(completion_cost(completion_response=resp))
+            except Exception:
+                price = prices.get(self.cfg["aliases"][alias]["models"][0])
+        if not price:
             log.warning("no price for model %s; cost recorded as 0", model)
             return 0.0
+        return (tokens[0] * price["input"] + tokens[1] * price["output"]) / 1_000_000
 
     def _record(
         self, meta: dict[str, Any], model: str, cost: float, tokens: tuple[int, int], latency_ms: int, cache_hit: bool

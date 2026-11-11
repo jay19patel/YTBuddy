@@ -13,8 +13,6 @@ class UserRow(SQLModel, table=True):
     email: str = Field(unique=True, index=True)
     created_at: datetime
     voice_md: str = Field(default="", sa_column=Column(Text, nullable=False, server_default=""))
-    notify_email: bool = False
-    telegram_chat_id: str | None = None
     daily_budget_usd: float = 2.0
 
 
@@ -207,15 +205,4 @@ class MediaFile(SQLModel, table=True):
     size: int = 0
     received: int = 0
     status: str = "uploading"  # uploading | ready
-    created_at: datetime
-
-
-class Notification(SQLModel, table=True):
-    id: int | None = Field(default=None, primary_key=True)
-    user_id: int = Field(index=True)
-    kind: str
-    title: str
-    body: str = ""
-    link: str = "/"
-    read: bool = False
     created_at: datetime

@@ -4,7 +4,7 @@ from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 
 from sqlalchemy import case, func
-from sqlmodel import Session, col, select, update
+from sqlmodel import Session, col, select
 
 from ytstudio.adapters.persistence import tables as t
 from ytstudio.adapters.persistence.db import session_for
@@ -177,31 +177,6 @@ class Queries:
                 "by_step": grouped(t.LLMCall.step),
                 "by_model": grouped(t.LLMCall.model),
             }
-
-    def notifications(self, user_id: int, limit: int = 50) -> list[dict[str, Any]]:
-        with self._s() as s:
-            rows = s.exec(
-                select(t.Notification)
-                .where(t.Notification.user_id == user_id)
-                .order_by(col(t.Notification.id).desc())
-                .limit(limit)
-            )
-            return [_row(r) for r in rows]
-
-    def unread(self, user_id: int) -> int:
-        with self._s() as s:
-            return int(
-                s.exec(
-                    select(func.count())
-                    .select_from(t.Notification)
-                    .where(t.Notification.user_id == user_id, not t.Notification.read)
-                ).one()
-            )
-
-    def mark_read(self, user_id: int) -> None:
-        with self._s() as s:
-            s.exec(update(t.Notification).where(col(t.Notification.user_id) == user_id).values(read=True))
-            s.commit()
 
     def videos(self, channel_id: str, days: int = 90) -> list[dict[str, Any]]:
         since = datetime.now(UTC) - timedelta(days=days)

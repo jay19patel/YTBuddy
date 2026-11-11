@@ -41,7 +41,6 @@ def test_pages_render(container, user_and_channel, db_url):
         "/trends",
         "/jobs",
         "/publish",
-        "/notifications",
     ):
         r = client.get(path)
         assert r.status_code == 200, path

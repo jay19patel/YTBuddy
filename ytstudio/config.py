@@ -21,9 +21,7 @@ class Settings(BaseSettings):
     celery_broker_url: str = "redis://localhost:6379/0"
     celery_result_backend: str = "redis://localhost:6379/1"
 
-    # Google OAuth: either env vars or the downloaded client JSON.
-    google_client_id: str = ""
-    google_client_secret: str = ""
+    # Google OAuth client: the JSON downloaded from Cloud Console (type "Web application").
     google_client_secrets_file: Path = ROOT / "YTStudioCred.json"
     google_api_key: str = ""  # optional; lets public stats skip OAuth entirely
 
@@ -46,20 +44,8 @@ class Settings(BaseSettings):
     llm_cache_ttl_s: int = 7 * 24 * 3600
     default_daily_budget_usd: float = 2.0
 
-    storage_backend: str = "local"  # local | s3
-    media_dir: Path = ROOT / "media"
-    s3_endpoint_url: str = ""
-    s3_bucket: str = "ytstudio"
-    s3_access_key: str = ""
-    s3_secret_key: str = ""
+    media_dir: Path = ROOT / "media"  # masters, rendered Shorts and covers live here
     max_master_bytes: int = 20 * 1024**3
-
-    smtp_host: str = ""
-    smtp_port: int = 587
-    smtp_user: str = ""
-    smtp_password: str = ""
-    smtp_from: str = ""
-    telegram_bot_token: str = ""
 
     whisper_model: str = "small"
     enable_manual_publish: bool = True  # existing upload/live pages
@@ -86,12 +72,11 @@ class Settings(BaseSettings):
         return {e.strip().lower() for e in self.allowed_emails.split(",") if e.strip()}
 
     def google_client(self) -> tuple[str, str]:
-        if self.google_client_id:
-            return self.google_client_id, self.google_client_secret
-        if self.google_client_secrets_file.exists():
-            web = json.loads(self.google_client_secrets_file.read_text())["web"]
-            return web["client_id"], web["client_secret"]
-        return "", ""
+        """(client_id, client_secret) from the client JSON; empty when the file is missing."""
+        if not self.google_client_secrets_file.exists():
+            return "", ""
+        web = json.loads(self.google_client_secrets_file.read_text())["web"]
+        return web["client_id"], web["client_secret"]
 
 
 @lru_cache

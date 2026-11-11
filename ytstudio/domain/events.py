@@ -1,4 +1,4 @@
-"""Domain events. Use cases emit them; the notification handler turns them into messages."""
+"""Domain events. Use cases emit them; they are logged (see adapters/notify.py)."""
 
 from dataclasses import dataclass
 

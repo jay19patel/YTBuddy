@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.1 (2026-11-11)
+### Changed
+- Google OAuth client is read only from `YTStudioCred.json` (no `GOOGLE_CLIENT_ID`/`SECRET` env vars).
+- Storage is local disk only: S3/MinIO support and boto3 removed.
+- LLM aliases use Google Gemini (primary) and Mistral (fallback); Anthropic removed. Cost tracking falls back to the alias's price when a `-latest` model comes back under its resolved name.
+### Removed
+- All notifications: in-app page, email and Telegram. Events are logged; failures show on the Jobs page. Migration `0004` drops the `notification` table and the user's notification columns.
+
 ## 0.2.0 (2026-11-11): YT Autopilot
 
 ### Security
@@ -11,7 +19,7 @@
 
 ### Fixed
 - Removed channels no longer come back on restart from `tokens/`.
-- A revoked or expired Google login now marks the channel "reconnect needed" and notifies you once, instead of failing every job.
+- A revoked or expired Google login now marks the channel "reconnect needed" (banner on every page), instead of failing every job.
 - One broken channel no longer stops the sidebar stats for all channels.
 
 ### Added

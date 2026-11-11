@@ -89,7 +89,6 @@ class Page:
     csrf: str
     channels: list[dict[str, Any]]
     active: dict[str, Any] | None
-    unread: int
     extra: dict[str, Any] = field(default_factory=dict)
 
     @property
@@ -118,7 +117,7 @@ def page(request: Request) -> Page:
     chans = q.channels(user.id)
     wanted = request.cookies.get("channel")
     active = next((ch for ch in chans if ch["id"] == wanted), chans[0] if chans else None)
-    return Page(request, user, info.csrf, chans, active, q.unread(user.id))
+    return Page(request, user, info.csrf, chans, active)
 
 
 async def csrf(request: Request, p: Page = Depends(page)) -> Page:
@@ -145,7 +144,6 @@ def render(p: Page, name: str, status_code: int = 200, **ctx: Any) -> Response:
             "csrf": p.csrf,
             "accounts": p.channels,
             "current": p.active,
-            "unread": p.unread,
             "flags": {"publish": s.enable_manual_publish},
             "success": msg,
             "path": p.request.url.path,

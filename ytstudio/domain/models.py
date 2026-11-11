@@ -164,8 +164,6 @@ class User:
     id: int
     email: str
     voice_md: str = ""
-    notify_email: bool = False
-    telegram_chat_id: str | None = None
     daily_budget_usd: float = 2.0
 
 

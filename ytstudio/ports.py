@@ -320,10 +320,6 @@ class LLMCalls(Protocol):
     def spent_today(self, user_id: int, day: date) -> float: ...
 
 
-class Notifications(Protocol):
-    def add(self, user_id: int, kind: str, title: str, body: str, link: str) -> None: ...
-
-
 class UnitOfWork(Protocol):
     users: Users
     channels: Channels
@@ -333,7 +329,6 @@ class UnitOfWork(Protocol):
     runs: Runs
     assets: Assets
     llm_calls: LLMCalls
-    notifications: Notifications
     sync_settings: SyncSettingsRepo
     media: Media
 

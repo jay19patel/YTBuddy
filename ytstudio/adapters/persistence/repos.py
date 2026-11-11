@@ -51,14 +51,7 @@ class SqlUsers(_Repo):
     @staticmethod
     def _dom(r: t.UserRow) -> User:
         assert r.id is not None
-        return User(
-            id=r.id,
-            email=r.email,
-            voice_md=r.voice_md,
-            notify_email=r.notify_email,
-            telegram_chat_id=r.telegram_chat_id,
-            daily_budget_usd=r.daily_budget_usd,
-        )
+        return User(id=r.id, email=r.email, voice_md=r.voice_md, daily_budget_usd=r.daily_budget_usd)
 
     def get(self, user_id: int) -> User:
         if not (r := self.s.get(t.UserRow, user_id)):
@@ -79,8 +72,7 @@ class SqlUsers(_Repo):
         r = self.s.get(t.UserRow, user.id)
         if not r:
             raise NotFound("user")
-        r.voice_md, r.notify_email = user.voice_md, user.notify_email
-        r.telegram_chat_id, r.daily_budget_usd = user.telegram_chat_id, user.daily_budget_usd
+        r.voice_md, r.daily_budget_usd = user.voice_md, user.daily_budget_usd
         self.s.add(r)
 
     def count(self) -> int:
@@ -539,11 +531,6 @@ class SqlLLMCalls(_Repo):
         return float(self.s.exec(q).one())
 
 
-class SqlNotifications(_Repo):
-    def add(self, user_id: int, kind: str, title: str, body: str, link: str) -> None:
-        self.s.add(t.Notification(user_id=user_id, kind=kind, title=title, body=body, link=link, created_at=utcnow()))
-
-
 class SqlUnitOfWork:
     users: ports.Users
     channels: ports.Channels
@@ -553,7 +540,6 @@ class SqlUnitOfWork:
     runs: ports.Runs
     assets: ports.Assets
     llm_calls: ports.LLMCalls
-    notifications: ports.Notifications
     sync_settings: ports.SyncSettingsRepo
     media: ports.Media
 
@@ -564,7 +550,7 @@ class SqlUnitOfWork:
         self.session = s = session_for(self.url)
         self.users, self.channels, self.videos = SqlUsers(s), SqlChannels(s), SqlVideos(s)
         self.trends, self.schedules, self.runs = SqlTrends(s), SqlSchedules(s), SqlRuns(s)
-        self.assets, self.llm_calls, self.notifications = SqlAssets(s), SqlLLMCalls(s), SqlNotifications(s)
+        self.assets, self.llm_calls = SqlAssets(s), SqlLLMCalls(s)
         self.sync_settings, self.media = SqlSyncSettings(s), SqlMedia(s)
         return self
 

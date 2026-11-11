@@ -270,7 +270,6 @@ def cleanup() -> None:
     with session_for(s.database_url) as db:
         db.exec(delete(t.WebSession).where(col(t.WebSession.expires_at) < now))
         db.exec(delete(t.OAuthState).where(col(t.OAuthState.expires_at) < now))
-        db.exec(delete(t.Notification).where(col(t.Notification.created_at) < now - timedelta(days=60)))
         db.exec(delete(t.DeadLetter).where(col(t.DeadLetter.resolved_at) < now - timedelta(days=30)))
         db.commit()
 

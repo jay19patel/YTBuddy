@@ -37,7 +37,6 @@
       {% for href, label in [("/today", "Today"), ("/ideas", "Ideas"), ("/shorts", "Shorts"), ("/insights", "Insights"), ("/trends", "Trends")] + ([("/publish", "Publish")] if flags.publish else []) + [("/jobs", "Jobs"), ("/settings", "Settings")] %}
         <a href="{{ href }}" {% if path.startswith(href) %}aria-current="page"{% endif %}>{{ label }}</a>
       {% endfor %}
-      <a href="/notifications" {% if path.startswith("/notifications") %}aria-current="page"{% endif %}>Notifications{% if unread %}<span class="count">{{ unread }}</span>{% endif %}</a>
     </div>
     <div class="rail-foot">
       <strong>{{ user.email }}</strong>
