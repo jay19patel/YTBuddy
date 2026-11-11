@@ -21,7 +21,7 @@ models = ["gemini/gemini-pro-latest", "mistral/mistral-large-latest"]
 [aliases.long]       # full transcripts: Gemini's ~1M-token context first
 models = ["gemini/gemini-pro-latest", "gemini/gemini-flash-latest"]
 
-# USD per million tokens, used for cost tracking and the daily budget.
+# USD per million tokens (paid prices). On free keys you pay nothing; the Jobs page shows what it would cost.
 # Set on the high side of published prices (Nov 2026), so the budget stops early rather than late.
 # Check https://ai.google.dev/gemini-api/docs/pricing and https://mistral.ai/pricing and update when they change.
 [prices."gemini/gemini-pro-latest"]
@@ -41,10 +41,12 @@ input = 0.15
 output = 0.60
 
 # Token bucket per provider: requests per second and burst.
+# Set for FREE tiers: Gemini's free tier allows only a few requests per minute on Pro models, Mistral's about
+# 1 request per second. A 429 beyond this still falls back to the next model. Raise these on a paid key.
 [rate_limits.gemini]
-rate = 1.0
-burst = 5
+rate = 0.08   # about 5 per minute
+burst = 2
 
 [rate_limits.mistral]
 rate = 1.0
-burst = 5
+burst = 1

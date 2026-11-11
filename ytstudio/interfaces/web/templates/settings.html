@@ -46,8 +46,8 @@
   <div class="row"><label class="field" for="s-voice">voice.md</label>
     <textarea id="s-voice" name="voice_md" rows="10" placeholder="Who you talk to, how you talk, words you never use, what you will not claim.">{{ user.voice_md }}</textarea>
     <p class="hint">Every script, package and SEO prompt includes this. Template: vendor/youtube-agent-skill/templates/voice.md</p></div>
-  <div class="row"><label class="field" for="s-budget">Daily LLM budget (USD)</label><input type="number" id="s-budget" name="daily_budget_usd" min="0" step="0.5" value="{{ user.daily_budget_usd }}">
-    <p class="hint">At the budget, non-critical steps (analysis, package, SEO, Shorts titles) stop (shown on the Jobs page). Ideas and scripts still run.</p></div>
+  <div class="row"><label class="field" for="s-budget">Daily LLM budget (USD, 0 = no limit)</label><input type="number" id="s-budget" name="daily_budget_usd" min="0" step="0.5" value="{{ user.daily_budget_usd }}">
+    <p class="hint">Leave 0 on free API keys. With a paid key: at the budget, non-critical steps (analysis, package, SEO, Shorts titles) stop (shown on the Jobs page). Ideas and scripts still run.</p></div>
   <button class="btn quiet" type="submit">Save</button>
 </form>
 

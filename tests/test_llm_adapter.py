@@ -138,12 +138,13 @@ def test_repair_succeeds(adapter_factory, user_and_channel):
 
 
 def test_budget_blocks_non_critical_and_notifies(adapter_factory, user_and_channel, container):
+    llm, published = adapter_factory('{"answer": "x"}')
+    llm.generate(req(user_and_channel[0], critical=False, q="no limit by default"), Out)  # budget 0 = no limit
     with container.uow() as uow:
         u = uow.users.get(user_and_channel[0])
-        u.daily_budget_usd = 0.0
+        u.daily_budget_usd = 1e-9  # spent today is already above this
         uow.users.update(u)
         uow.commit()
-    llm, published = adapter_factory('{"answer": "x"}')
     with pytest.raises(BudgetExceeded):
         llm.generate(req(user_and_channel[0], critical=False), Out)
     assert isinstance(published[0], BudgetReached)

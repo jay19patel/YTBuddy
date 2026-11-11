@@ -13,7 +13,7 @@ class UserRow(SQLModel, table=True):
     email: str = Field(unique=True, index=True)
     created_at: datetime
     voice_md: str = Field(default="", sa_column=Column(Text, nullable=False, server_default=""))
-    daily_budget_usd: float = 2.0
+    daily_budget_usd: float = 0.0  # 0 = no limit
 
 
 class WebSession(SQLModel, table=True):

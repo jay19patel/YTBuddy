@@ -5,7 +5,7 @@
 <header><h1>Jobs</h1><span class="sub"><a href="/health">Health JSON</a></span></header>
 
 <section class="panel stats">
-  <div><span>LLM cost today</span><strong>${{ costs.today | num(2) }}</strong><em>budget ${{ budget | num(2) }}/day</em></div>
+  <div><span>LLM cost today</span><strong>${{ costs.today | num(2) }}</strong><em>{% if budget > 0 %}budget ${{ budget | num(2) }}/day{% else %}no budget limit; estimated at paid prices{% endif %}</em></div>
   <div><span>LLM cost, 7 days</span><strong>${{ costs.week | num(2) }}</strong></div>
   <div><span>YouTube quota today</span><strong>{{ quota_used | num }}</strong><em>of {{ quota_limit | num }} units (Pacific day)</em></div>
   {% for name in ["beat", "worker_io", "worker_llm", "worker_media", "redis", "postgres"] %}{% set h = health.get(name, {}) %}

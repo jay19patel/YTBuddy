@@ -204,7 +204,7 @@ def detect(p: Page = Depends(csrf)) -> Response:
 @router.post("/settings/profile")
 def save_profile(
     voice_md: str = Form(""),
-    daily_budget_usd: float = Form(2.0),
+    daily_budget_usd: float = Form(0.0),
     p: Page = Depends(csrf),
 ) -> Response:
     c = get_container()

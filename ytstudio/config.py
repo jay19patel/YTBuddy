@@ -42,7 +42,6 @@ class Settings(BaseSettings):
     litellm_proxy_url: str = ""
     litellm_proxy_key: str = ""
     llm_cache_ttl_s: int = 7 * 24 * 3600
-    default_daily_budget_usd: float = 2.0
 
     media_dir: Path = ROOT / "media"  # masters, rendered Shorts and covers live here
     max_master_bytes: int = 20 * 1024**3

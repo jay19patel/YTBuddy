@@ -164,7 +164,7 @@ class User:
     id: int
     email: str
     voice_md: str = ""
-    daily_budget_usd: float = 2.0
+    daily_budget_usd: float = 0.0  # 0 = no limit
 
 
 def idem_key(channel_id: str, pipeline: str, local_day: date) -> str:

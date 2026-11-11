@@ -160,6 +160,8 @@ class LiteLLMAdapter:
         with self.uow() as uow:
             user = uow.users.get(req.user_id)
             spent = uow.llm_calls.spent_today(req.user_id, today)
+        if user.daily_budget_usd <= 0:  # 0 = no limit (free tiers: the provider's rate limit is the real cap)
+            return
         if spent >= user.daily_budget_usd:
             if self.claim_once(f"yt:llm:budget-notified:{req.user_id}:{today}"):
                 self.publish(BudgetReached(user_id=req.user_id, spent_usd=spent))
