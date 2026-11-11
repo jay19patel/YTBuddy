@@ -1,6 +1,5 @@
 """Web layer: login, CSRF, owner scoping, resumable upload, security headers, every page renders with data."""
 
-import pytest
 from fastapi.testclient import TestClient
 
 from tests.test_characterization import logged_in
@@ -8,35 +7,32 @@ from ytstudio.adapters.persistence.web_sessions import WebSessions
 from ytstudio.interfaces.web.app import create_app
 
 
-@pytest.fixture
-def fresh_redis(container):
-    container.redis.flushdb()
-    yield
-    container.redis.flushdb()
-
-
-def test_pin_opens_the_site(container, db_url, fresh_redis):
+def test_google_login_creates_a_session_for_an_allowed_gmail(container, db_url):
     client = TestClient(create_app())
-    assert "PIN" in client.get("/login").text
-    r = client.post("/login", data={"pin": "242425"}, follow_redirects=False)
+    r = client.get("/login", follow_redirects=False)  # straight to Google; no password or PIN form
+    assert r.status_code == 303 and "accounts.google.com" in r.headers["location"] and "ytnonce" in r.cookies
+    r = client.get("/oauth2callback?state=st1&code=c", follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"] == "/today"
     assert WebSessions(db_url).get(r.cookies["ytsid"])
     assert "httponly" in r.headers["set-cookie"].lower()
     assert client.get("/today").status_code == 200
 
 
-def test_wrong_pin_is_rejected_and_rate_limited(container, db_url, fresh_redis):
+def test_gmail_not_on_the_list_is_refused(container, db_url):
+    container.oauth.email = "stranger@example.com"
     client = TestClient(create_app())
-    for _ in range(5):
-        assert client.post("/login", data={"pin": "000000"}).status_code == 401
-    r = client.post("/login", data={"pin": "242425"})  # even the right PIN waits once locked
-    assert r.status_code == 429 and "15 minutes" in r.text
-    assert client.post("/login", data={"pin": "242425"}, headers={"Origin": "https://evil.example"}).status_code == 403
+    client.get("/login", follow_redirects=False)
+    r = client.get("/oauth2callback?state=st1&code=c", follow_redirects=False)
+    assert r.status_code == 403 and "ALLOWED_EMAILS" in r.text and "ytsid" not in r.cookies
 
 
-def test_google_login_is_gone(container):
-    client = TestClient(create_app())
-    assert client.get("/login/start").status_code in (404, 405)
+def test_the_same_gmail_on_a_second_device_sees_the_same_history(container, user_and_channel, db_url):
+    container.scheduling.run_now(*user_and_channel)  # a brief made from "device one"
+    phone = TestClient(create_app())  # a different browser with no cookies
+    phone.get("/login", follow_redirects=False)
+    phone.get("/oauth2callback?state=st1&code=c", follow_redirects=False)  # fake Google signs in me@example.com
+    page = phone.get("/ideas").text
+    assert "Idea 0" in page and "My Channel" in page
 
 
 def test_oauth_state_is_bound_to_the_browser(container, user_and_channel, db_url):

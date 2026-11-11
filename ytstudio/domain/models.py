@@ -107,6 +107,7 @@ class Schedule:
     niche: str = ""
     custom_topics: list[str] = field(default_factory=list)
     target_minutes: int = 8
+    voice_md: str = ""  # who you talk to, how you talk: per channel
     shorts_enabled: bool = True
     next_run_utc: datetime | None = None
     confirmed: bool = False
@@ -163,7 +164,6 @@ class MediaFile:
 class User:
     id: int
     email: str
-    voice_md: str = ""
     daily_budget_usd: float = 0.0  # 0 = no limit
 
 

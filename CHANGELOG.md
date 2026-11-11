@@ -2,7 +2,8 @@
 
 ## 0.2.2 (2026-11-11)
 ### Changed
-- The site opens with a PIN (`APP_PIN`) instead of Google sign-in; 5 wrong tries lock it for 15 minutes. Adding a channel still uses Google OAuth.
+- Sign-in is Google-only and strict: only Gmail addresses in `ALLOWED_EMAILS` get in (an empty list means nobody, with no first-user exception). A PIN was tried for a few hours and removed. Data belongs to the Gmail, so any device that signs in with it sees the same history.
+- A bad Gemini/Mistral key now fails at once with a clear message instead of retrying; connecting a channel owned by another account now says so instead of showing "channel".
 - Docker Compose is the one way to run it; the website is on port 8000.
 ### Fixed
 - Sidebar was white with white text in dark mode; it now has its own dark colour in both themes.

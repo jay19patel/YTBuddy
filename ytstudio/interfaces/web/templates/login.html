@@ -4,14 +4,10 @@
 <section class="login">
   <h1>YTStudio</h1>
   <p class="muted">Research and prep for your channel. Nothing is ever published for you.</p>
-  {% if pin_set %}
-    <form method="post" action="/login" class="pin-form">
-      <label class="field" for="pin">PIN</label>
-      <input type="password" id="pin" name="pin" inputmode="numeric" autocomplete="current-password" autofocus required>
-      <button class="btn" type="submit">Open</button>
-    </form>
+  {% if error %}
+    <p class="err-text">{{ error }}</p>
   {% else %}
-    <p class="err-text">Set <code>APP_PIN</code> in <code>.env</code>, then restart.</p>
+    <p class="muted">Redirecting you to Google sign-in…</p>
   {% endif %}
 </section>
 {% endblock %}

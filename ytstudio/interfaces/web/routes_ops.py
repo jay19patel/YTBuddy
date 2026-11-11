@@ -60,11 +60,12 @@ def jobs_status() -> list[dict[str, Any]]:
 @router.get("/jobs")
 def jobs(p: Page = Depends(page)) -> Response:
     q, c = queries(), get_container()
+    channel_id: str | None = p.active["id"] if p.active else None  # runs and dead letters of this channel only
     return render(
         p,
         "jobs.html",
-        runs=q.runs(p.user.id),
-        dead=q.dead_letters(p.user.id),
+        runs=q.runs(p.user.id, channel_id),
+        dead=q.dead_letters(p.user.id, channel_id),
         costs=q.llm_costs(p.user.id),
         budget=p.user.daily_budget_usd,
         quota_used=c.quota.used_today(),
@@ -170,6 +171,7 @@ def save_schedule(
     niche: str = Form(""),
     custom_topics: str = Form(""),
     target_minutes: int = Form(8),
+    voice_md: str = Form(""),
     shorts_enabled: bool = Form(False),
     p: Page = Depends(csrf),
 ) -> Response:
@@ -187,6 +189,7 @@ def save_schedule(
             niche=niche.strip()[:300],
             custom_topics=[t.strip() for t in custom_topics.splitlines() if t.strip()][:20],
             target_minutes=min(max(target_minutes, 1), 120),
+            voice_md=voice_md[:20000],
             shorts_enabled=shorts_enabled,
         ),
     )
@@ -203,14 +206,12 @@ def detect(p: Page = Depends(csrf)) -> Response:
 
 @router.post("/settings/profile")
 def save_profile(
-    voice_md: str = Form(""),
     daily_budget_usd: float = Form(0.0),
     p: Page = Depends(csrf),
 ) -> Response:
     c = get_container()
     with c.uow() as uow:
         u = uow.users.get(p.user.id)
-        u.voice_md = voice_md[:20000]
         u.daily_budget_usd = min(max(daily_budget_usd, 0.0), 1000.0)
         uow.users.update(u)
         uow.commit()

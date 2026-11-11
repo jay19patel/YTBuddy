@@ -274,5 +274,5 @@ body.bare { display: block; }
 .rail-btn { font: inherit; font-size: 13px; margin-top: 8px; padding: 4px 12px; border-radius: 6px; cursor: pointer;
   background: transparent; color: #e7eaee; border: 1px solid #4a525b; }
 .rail-btn:hover { border-color: #fff; color: #fff; }
-.pin-form { display: grid; gap: 10px; max-width: 240px; margin: 24px auto 0; text-align: left; }
-.pin-form input { font-size: 22px; letter-spacing: .3em; text-align: center; }
+.chan { display: flex; align-items: center; gap: 8px; margin: 0 0 14px; font-weight: 600; color: var(--muted); font-size: 14px; }
+.chan img { width: 24px; height: 24px; border-radius: 50%; }

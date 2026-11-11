@@ -10,6 +10,7 @@ from ytstudio.container import get_container
 from ytstudio.domain.metrics import median_views
 from ytstudio.domain.models import AssetStatus, RetentionPoint, Video
 from ytstudio.interfaces.web.app import Page, back, csrf, page, queries, render
+from ytstudio.interfaces.web.routes_auth import cookie
 
 router = APIRouter()
 PERIODS = (7, 28, 90, 365)
@@ -67,15 +68,23 @@ def asset(request: Request, asset_id: int, p: Page = Depends(page)) -> Response:
     if not a:
         raise HTTPException(404)
     q = queries()
+    own = next((ch for ch in p.channels if ch["id"] == a["channel_id"]), None)
+    if not own:  # its channel was disconnected
+        raise HTTPException(404)
+    switched = not p.active or p.active["id"] != own["id"]
+    p.active = own  # opened from a link or bookmark of another channel: show it under its own channel
     developed = q.developed(p.user.id, a["channel_id"], a["id"]) if a["kind"] == "idea" else {}
     run_id = request.query_params.get("run")
-    return render(
+    resp = render(
         p,
         "asset.html",
         a=a,
         developed=developed,
         run=q.run(p.user.id, int(run_id)) if run_id and run_id.isdigit() else None,
     )
+    if switched:
+        cookie(resp, "channel", own["id"], 365 * 86400)
+    return resp
 
 
 @router.post("/assets/{asset_id}/status")

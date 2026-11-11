@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 
 from ytstudio.config import get_settings
 from ytstudio.container import get_container
+from ytstudio.domain.errors import PermanentError
 from ytstudio.interfaces.web.app import Page, back, csrf, page, queries, render
 from ytstudio.interfaces.web.routes_pages import started
 
@@ -121,6 +122,9 @@ def link_video(media_id: int, video_id: str = Form(""), p: Page = Depends(csrf))
     c = get_container()
     with c.uow() as uow:
         m = uow.media.get(media_id, p.user.id)
+        known = uow.videos.get(vid) if vid else None
+        if known and known.channel_id != m.channel_id:
+            raise PermanentError("That video belongs to a different channel than this master file.")
         m.video_id = vid or None
         uow.media.update(m)
         uow.commit()

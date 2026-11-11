@@ -21,7 +21,7 @@ from typing import Any
 
 from pydantic import BaseModel, ValidationError
 
-from ytstudio.domain.errors import BudgetExceeded, LLMOutputInvalid, TransientError
+from ytstudio.domain.errors import BudgetExceeded, LLMOutputInvalid, PermanentError, TransientError
 from ytstudio.domain.events import BudgetReached, Event
 from ytstudio.ports import LLMRequest, PromptRepository, RateLimiter, T, UowFactory
 
@@ -182,6 +182,11 @@ class LiteLLMAdapter:
         try:
             resp = self.router.completion(model=alias, messages=messages, max_tokens=d.get("max_tokens", 16000))
         except Exception as e:  # the Router already retried and fell back; this is its final answer
+            if type(e).__name__ == "AuthenticationError":  # retrying a rejected key never helps
+                raise PermanentError(
+                    f"{provider} rejected the API key for alias '{alias}'. Check GEMINI_API_KEY / MISTRAL_API_KEY "
+                    "in .env. Gemini keys start with AIza (create one at https://aistudio.google.com/apikey)."
+                ) from e
             raise TransientError(f"LLM {alias} unavailable: {type(e).__name__}: {str(e)[:200]}") from e
         latency = int((time.monotonic() - started) * 1000)
         usage = getattr(resp, "usage", None)

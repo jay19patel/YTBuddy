@@ -14,7 +14,7 @@
 </section>
 
 <section class="panel">
-  <h2>Pipeline runs</h2>
+  <h2>Pipeline runs{% if current %} for {{ current.title }}{% endif %}</h2>
   {% if runs %}
   <div class="table-wrap"><table>
     <thead><tr><th>Run</th><th>Status</th><th>Steps</th><th>Started</th><th></th></tr></thead>
@@ -43,7 +43,7 @@
 </section>
 
 <section class="panel">
-  <h2>LLM cost, last 7 days</h2>
+  <h2>LLM cost, last 7 days <span class="muted">(all your channels)</span></h2>
   <div class="split">
     {% for title, rows in [("By alias", costs.by_alias), ("By step", costs.by_step)] %}
     <div class="table-wrap"><table><thead><tr><th>{{ title }}</th><th>Calls</th><th>Cached</th><th>Tokens in/out</th><th>Cost</th></tr></thead>

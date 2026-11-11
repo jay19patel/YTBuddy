@@ -12,7 +12,6 @@ class UserRow(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     email: str = Field(unique=True, index=True)
     created_at: datetime
-    voice_md: str = Field(default="", sa_column=Column(Text, nullable=False, server_default=""))
     daily_budget_usd: float = 0.0  # 0 = no limit
 
 
@@ -115,6 +114,7 @@ class ScheduleRow(SQLModel, table=True):
     niche: str = ""
     custom_topics: list[str] = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
     target_minutes: int = 8
+    voice_md: str = Field(default="", sa_column=Column(Text, nullable=False, server_default=""))
     shorts_enabled: bool = True
     next_run_utc: datetime | None = Field(default=None, index=True)
     confirmed: bool = False

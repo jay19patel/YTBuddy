@@ -15,7 +15,7 @@ Everything runs with Docker Compose: website, workers, scheduler, Postgres, Redi
 
 1. Install and open Docker Desktop.
 2. Put `YTStudioCred.json` (Google OAuth client, see below) in this folder.
-3. `cp .env.example .env` and fill in: `TOKEN_ENCRYPTION_KEY`, `APP_PIN`, `GEMINI_API_KEY`, `MISTRAL_API_KEY`, and the passwords (`POSTGRES_PASSWORD`, `REDIS_PASSWORD`, `FLOWER_PASSWORD`; letters and digits only).
+3. `cp .env.example .env` and fill in: `TOKEN_ENCRYPTION_KEY`, `ALLOWED_EMAILS` (your Gmail), `GEMINI_API_KEY`, `MISTRAL_API_KEY`, and the passwords (`POSTGRES_PASSWORD`, `REDIS_PASSWORD`, `FLOWER_PASSWORD`; letters and digits only).
 4. Start everything:
 
 ```bash
@@ -25,13 +25,21 @@ docker compose logs -f api       # follow a service's log
 docker compose down              # stop (data stays in Docker volumes)
 ```
 
-5. Open <http://localhost:8000>, enter your PIN, add your channel (Google asks for YouTube access), confirm Settings, then press **Run today's brief now** on Today.
+5. Open <http://localhost:8000>; it sends you to Google sign-in (only a Gmail in `ALLOWED_EMAILS` gets in). Then add your channel (Google asks for YouTube access), confirm Settings, then press **Run today's brief now** on Today.
 
 Services: `web` (Caddy, the only published port, 8000), `api` (runs migrations on start), `worker-io`, `worker-llm`, `worker-media`, `beat`, `flower` (<http://127.0.0.1:5555>, password), `postgres`, `redis` (password, not published). Master files and Shorts live on the `media` volume.
 
+## Using it from another device
+
+Your history (briefs, ideas, scripts, Shorts, runs) is stored on the server under your Gmail, so signing in with the same Gmail on any device shows the same data. The only requirement is that the device can open the site and that Google accepts the redirect address:
+
+- `http://localhost:8000` works only on this computer.
+- Google refuses plain `http://` for any other address (for example `http://192.168.1.5:8000`). For a phone or another computer you need an `https://` address, such as a domain on a server (`SITE_ADDRESS=your.domain`, `BASE_URL=https://your.domain`, ports 80 and 443 open), or a tunnel to this computer (Tailscale or Cloudflare Tunnel).
+- Whichever address you use, add `<address>/oauth2callback` to **Authorized redirect URIs** in the Google Cloud OAuth client, set `BASE_URL` to it, and add the Gmail under **Test users**.
+
 ## Upgrading from the old single-file app
 
-Docker starts with a fresh Postgres; the old `ytstudio.db` is not needed. Add your channel again after entering the PIN: the old sidebar stats and analytics are fetched again automatically. (To carry the old file over anyway: `DATABASE_URL=sqlite:///ytstudio.db uv run python -m ytstudio.cli migrate`, then `copy-sqlite` into Postgres. It encrypts the old tokens and needs `TOKEN_ENCRYPTION_KEY`.) Delete `tokens/` once you no longer need the old app.
+Docker starts with a fresh Postgres; the old `ytstudio.db` is not needed. Add your channel again after signing in: the old sidebar stats and analytics are fetched again automatically. (To carry the old file over anyway: `DATABASE_URL=sqlite:///ytstudio.db uv run python -m ytstudio.cli migrate`, then `copy-sqlite` into Postgres. It encrypts the old tokens and needs `TOKEN_ENCRYPTION_KEY`.) Delete `tokens/` once you no longer need the old app.
 
 ## Google Cloud setup (once)
 

@@ -32,6 +32,9 @@
     <div><label class="field" for="s-len">Target length (minutes)</label><input type="number" id="s-len" name="target_minutes" min="1" max="120" value="{{ schedule.target_minutes }}"></div>
     <div><label class="switch"><input type="checkbox" name="shorts_enabled" value="true" {% if schedule.shorts_enabled %}checked{% endif %}> Make Shorts automatically when a linked upload goes live</label></div>
   </div>
+  <div class="row"><label class="field" for="s-voice">voice.md for {{ current.title }}</label>
+    <textarea id="s-voice" name="voice_md" rows="8" placeholder="Who you talk to, how you talk, words you never use, what you will not claim.">{{ schedule.voice_md }}</textarea>
+    <p class="hint">Used in every script, package and SEO prompt for this channel only. Each channel has its own voice.</p></div>
   <button class="btn quiet" type="submit">Save and confirm</button>
 </form>
 <div class="actions">
@@ -42,10 +45,7 @@
 
 <form class="panel settings" method="post" action="/settings/profile">
   <input type="hidden" name="csrf" value="{{ csrf }}">
-  <h2>Voice and budget</h2>
-  <div class="row"><label class="field" for="s-voice">voice.md</label>
-    <textarea id="s-voice" name="voice_md" rows="10" placeholder="Who you talk to, how you talk, words you never use, what you will not claim.">{{ user.voice_md }}</textarea>
-    <p class="hint">Every script, package and SEO prompt includes this. Template: vendor/youtube-agent-skill/templates/voice.md</p></div>
+  <h2>Daily LLM budget <span class="muted">(all your channels together)</span></h2>
   <div class="row"><label class="field" for="s-budget">Daily LLM budget (USD, 0 = no limit)</label><input type="number" id="s-budget" name="daily_budget_usd" min="0" step="0.5" value="{{ user.daily_budget_usd }}">
     <p class="hint">Leave 0 on free API keys. With a paid key: at the budget, non-critical steps (analysis, package, SEO, Shorts titles) stop (shown on the Jobs page). Ideas and scripts still run.</p></div>
   <button class="btn quiet" type="submit">Save</button>

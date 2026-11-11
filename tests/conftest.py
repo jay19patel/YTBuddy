@@ -14,7 +14,7 @@ with open(CLIENT_JSON, "w") as f:
 os.environ.update(
     {
         "TOKEN_ENCRYPTION_KEY": KEY,
-        "APP_PIN": "242425",
+        "ALLOWED_EMAILS": "me@example.com,other@example.com",
         "GOOGLE_CLIENT_SECRETS_FILE": CLIENT_JSON,
         "BASE_URL": "http://testserver",
         "REDIS_URL": "redis://localhost:6379/15",
@@ -127,6 +127,6 @@ def container(db_url: str, yt: fakes.FakeYouTube, tmp_path: Path) -> Container:
 
 @pytest.fixture
 def user_and_channel(container: Container) -> tuple[int, str]:
-    user = container.accounts.owner()
+    user = container.accounts.owner("me@example.com")
     container.accounts.connect(user.id, fakes.OAuthToken(refresh_token="rt", scopes=["s"]))
     return user.id, "UCme"

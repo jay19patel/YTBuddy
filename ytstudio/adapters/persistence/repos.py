@@ -15,7 +15,7 @@ from sqlmodel import Session, col, delete, select
 from ytstudio import ports
 from ytstudio.adapters.persistence import tables as t
 from ytstudio.adapters.persistence.db import session_for
-from ytstudio.domain.errors import NotFound
+from ytstudio.domain.errors import NotFound, PermanentError
 from ytstudio.domain.models import (
     Asset,
     AssetStatus,
@@ -51,7 +51,7 @@ class SqlUsers(_Repo):
     @staticmethod
     def _dom(r: t.UserRow) -> User:
         assert r.id is not None
-        return User(id=r.id, email=r.email, voice_md=r.voice_md, daily_budget_usd=r.daily_budget_usd)
+        return User(id=r.id, email=r.email, daily_budget_usd=r.daily_budget_usd)
 
     def get(self, user_id: int) -> User:
         if not (r := self.s.get(t.UserRow, user_id)):
@@ -72,7 +72,7 @@ class SqlUsers(_Repo):
         r = self.s.get(t.UserRow, user.id)
         if not r:
             raise NotFound("user")
-        r.voice_md, r.daily_budget_usd = user.voice_md, user.daily_budget_usd
+        r.daily_budget_usd = user.daily_budget_usd
         self.s.add(r)
 
     def count(self) -> int:
@@ -116,7 +116,7 @@ class SqlChannels(_Repo):
     def upsert(self, info: ChannelInfo, user_id: int) -> Channel:
         r = self.s.get(t.Channel, info.id)
         if r and r.user_id not in (None, user_id):
-            raise NotFound("channel")  # connected by another user: don't hand it over
+            raise PermanentError("This YouTube channel is already connected to another YTStudio account.")
         r = r or t.Channel(id=info.id, title=info.title, thumb=info.thumb, creds="")
         r.user_id, r.title, r.thumb, r.status = user_id, info.title, info.thumb, ChannelStatus.OK
         r.uploads_playlist = info.uploads_playlist or r.uploads_playlist
@@ -346,6 +346,7 @@ class SqlSchedules(_Repo):
             niche=r.niche,
             custom_topics=list(r.custom_topics or []),
             target_minutes=r.target_minutes,
+            voice_md=r.voice_md,
             shorts_enabled=r.shorts_enabled,
             next_run_utc=aware(r.next_run_utc),
             confirmed=r.confirmed,

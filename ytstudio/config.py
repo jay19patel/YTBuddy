@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     # Comma-separated Fernet keys; the first encrypts, all decrypt (rotation).
     token_encryption_key: str = ""
     legacy_tokens_dir: Path = ROOT / "tokens"  # pre-migration token files, imported once by migration 0002
-    app_pin: str = ""  # the PIN that opens the site; empty = nobody can sign in
+    allowed_emails: str = ""  # comma-separated Gmail addresses that may sign in; empty = nobody
 
     quota_daily_limit: int = 10_000
     quota_noncritical_pct: int = 80  # non-critical calls stop past this share of the day's quota
@@ -65,6 +65,10 @@ class Settings(BaseSettings):
     @property
     def redirect_uri(self) -> str:
         return f"{self.base_url}/oauth2callback"
+
+    @property
+    def allowed(self) -> set[str]:
+        return {e.strip().lower() for e in self.allowed_emails.split(",") if e.strip()}
 
     def google_client(self) -> tuple[str, str]:
         """(client_id, client_secret) from the client JSON; empty when the file is missing."""

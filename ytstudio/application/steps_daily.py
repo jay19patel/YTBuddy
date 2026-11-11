@@ -27,7 +27,7 @@ def channel_vars(ctx: Context) -> dict[str, Any]:
         "language": LANG_NAMES.get(s.language, s.language),
         "region": s.region,
         "target_minutes": s.target_minutes,
-        "voice": ctx.user.voice_md.strip(),
+        "voice": ctx.schedule.voice_md.strip(),
     }
 
 

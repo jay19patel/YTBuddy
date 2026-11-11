@@ -9,15 +9,18 @@ from ytstudio.domain.models import AssetStatus, ChannelStatus, OAuthToken, RunSt
 from ytstudio.ports import ChannelInfo
 
 
-def test_owner_is_created_once_and_claims_legacy_channels(container, db_url):
+def test_only_allowed_gmail_can_sign_in_and_first_user_claims_legacy_channels(container, db_url):
     from ytstudio.adapters.persistence import tables as t
     from ytstudio.adapters.persistence.db import session_for
+    from ytstudio.application.use_cases import NotAllowed
 
     with session_for(db_url) as s:  # a channel from before sign-in existed
         s.add(t.Channel(id="UCold", title="Old", thumb="", creds=""))
         s.commit()
-    me = container.accounts.owner()
-    assert container.accounts.owner().id == me.id
+    with pytest.raises(NotAllowed):  # strict, even as the very first sign-in on an empty database
+        container.accounts.owner("stranger@example.com")
+    me = container.accounts.owner("ME@Example.com")
+    assert container.accounts.owner("me@example.com").id == me.id
     with container.uow() as uow:
         assert uow.channels.get("UCold").user_id == me.id
     other = container.accounts.owner("other@example.com")
@@ -25,11 +28,19 @@ def test_owner_is_created_once_and_claims_legacy_channels(container, db_url):
         assert [c.id for c in uow.channels.list(other.id)] == []
 
 
+def test_empty_allowlist_means_nobody(container):
+    from ytstudio.application.use_cases import Accounts, NotAllowed
+
+    closed = Accounts(container.uow, container.oauth, container.vault, container.youtube, set())
+    with pytest.raises(NotAllowed):
+        closed.owner("me@example.com")
+
+
 def test_channel_of_another_user_is_invisible_and_not_stealable(container, user_and_channel):
     other = container.accounts.owner("other@example.com")
     with container.uow() as uow, pytest.raises(NotFound):
         uow.channels.get("UCme", other.id)
-    with pytest.raises(NotFound):
+    with pytest.raises(PermanentError, match="already connected to another"):  # not a bare "channel" message
         container.accounts.connect(other.id, OAuthToken(refresh_token="x"))
 
 

@@ -191,3 +191,14 @@ def test_resolved_model_name_falls_back_to_alias_price(adapter_factory, user_and
     assert (
         llm._cost(resp, "gemini-9-pro-preview", (1_000_000, 0), "fast") == 0.1
     )  # test config: flash input is 0.10 per 1M
+
+
+def test_rejected_api_key_is_permanent_and_names_the_fix(adapter_factory, user_and_channel):
+    import litellm
+
+    from ytstudio.domain.errors import PermanentError
+
+    bad = litellm.AuthenticationError(message="API key not valid", llm_provider="gemini", model="gemini-flash-latest")
+    llm, _ = adapter_factory(bad)
+    with pytest.raises(PermanentError, match="GEMINI_API_KEY"):  # not retried as if the network were down
+        llm.generate(req(user_and_channel[0]), Out)

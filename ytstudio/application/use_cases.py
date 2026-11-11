@@ -37,7 +37,8 @@ log = logging.getLogger(__name__)
 PERIODS = (7, 28, 90, 365)
 
 
-OWNER_EMAIL = "owner@local"  # the single account behind the PIN
+class NotAllowed(DomainError):
+    pass
 
 
 class Events:
@@ -53,16 +54,21 @@ class Events:
 
 
 class Accounts:
-    def __init__(self, uow: UowFactory, oauth: OAuthProvider, vault: TokenVault, videos: VideoSource):
-        self.uow, self.oauth, self.vault, self.videos = uow, oauth, vault, videos
+    def __init__(
+        self, uow: UowFactory, oauth: OAuthProvider, vault: TokenVault, videos: VideoSource, allowed: set[str]
+    ):
+        self.uow, self.oauth, self.vault, self.videos, self.allowed = uow, oauth, vault, videos, allowed
 
-    def owner(self, email: str = OWNER_EMAIL) -> User:
-        """The account the PIN unlocks (created on first sign-in)."""
+    def owner(self, email: str) -> User:
+        """The user for this Gmail address. Only ALLOWED_EMAILS may sign in; an empty list means nobody."""
+        email = email.lower().strip()
+        if email not in self.allowed:
+            raise NotAllowed(f"{email} is not allowed. Add it to ALLOWED_EMAILS in .env and restart.")
         with self.uow() as uow:
             user = uow.users.by_email(email)
             if not user:
                 user = uow.users.add(email)
-                if uow.users.count() == 1:  # first user ever: channels connected before logins existed are theirs
+                if uow.users.count() == 1:  # first user: channels connected before logins existed are theirs
                     uow.channels.claim_unowned(user.id)
             uow.commit()
         return user

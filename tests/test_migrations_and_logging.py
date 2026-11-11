@@ -53,7 +53,7 @@ def test_legacy_database_is_stamped_upgraded_and_tokens_encrypted(tmp_path, monk
     migrate(f"sqlite:///{db}")
 
     con = sqlite3.connect(db)
-    assert con.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0005"
+    assert con.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0006"
     rows = dict(con.execute("SELECT id, creds FROM channel").fetchall())
     assert set(rows) == {"UC1", "UC2"}
     assert all(c.startswith("v1:") and "LEAKED" not in c and "refresh" not in c for c in rows.values())

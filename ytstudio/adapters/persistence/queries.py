@@ -87,16 +87,12 @@ class Queries:
             out.setdefault(a["kind"], a)
         return out
 
-    def runs(self, user_id: int, limit: int = 50) -> list[dict[str, Any]]:
+    def runs(self, user_id: int, channel_id: str | None = None, limit: int = 50) -> list[dict[str, Any]]:
+        q = select(t.PipelineRun).where(t.PipelineRun.user_id == user_id)
+        if channel_id:
+            q = q.where(t.PipelineRun.channel_id == channel_id)
         with self._s() as s:
-            runs = list(
-                s.exec(
-                    select(t.PipelineRun)
-                    .where(t.PipelineRun.user_id == user_id)
-                    .order_by(col(t.PipelineRun.id).desc())
-                    .limit(limit)
-                )
-            )
+            runs = list(s.exec(q.order_by(col(t.PipelineRun.id).desc()).limit(limit)))
             steps = list(
                 s.exec(
                     select(t.StepRun).where(col(t.StepRun.run_id).in_([r.id for r in runs])).order_by(col(t.StepRun.id))
@@ -126,9 +122,10 @@ class Queries:
             "progress": f"{sum(1 for x in steps if x['status'] == 'done')}/{len(planned) or len(steps)}",
         }
 
-    def dead_letters(self, user_id: int) -> list[dict[str, Any]]:
+    def dead_letters(self, user_id: int, channel_id: str | None = None) -> list[dict[str, Any]]:
         with self._s() as s:
-            run_ids = select(t.PipelineRun.id).where(t.PipelineRun.user_id == user_id)
+            owned = select(t.PipelineRun.id).where(t.PipelineRun.user_id == user_id)
+            run_ids = owned.where(t.PipelineRun.channel_id == channel_id) if channel_id else owned
             rows = s.exec(
                 select(t.DeadLetter)
                 .where(col(t.DeadLetter.run_id).in_(run_ids), col(t.DeadLetter.resolved_at).is_(None))
