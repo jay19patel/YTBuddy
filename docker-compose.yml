@@ -1,0 +1,126 @@
+# Only "web" is published. Postgres and Redis have no host ports; Flower and the MinIO console are on
+# 127.0.0.1 only and need passwords. Copy .env.example to .env and fill it in first.
+x-app: &app
+  build: .
+  image: ytstudio:local
+  env_file: [{path: .env, required: false}]
+  environment:
+    DATABASE_URL: postgresql+psycopg://ytstudio:${POSTGRES_PASSWORD}@postgres:5432/ytstudio
+    REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/2
+    CELERY_BROKER_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+    CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD}@redis:6379/1
+    STORAGE_BACKEND: s3
+    S3_ENDPOINT_URL: http://minio:9000
+    S3_ACCESS_KEY: ${MINIO_ROOT_USER}
+    S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+    MEDIA_DIR: /app/media
+  volumes: [media:/app/media]
+  depends_on:
+    postgres: {condition: service_healthy}
+    redis: {condition: service_healthy}
+    minio: {condition: service_healthy}
+  restart: unless-stopped
+  stop_grace_period: 2m  # warm shutdown: running tasks finish; acks_late redelivers anything cut off
+
+services:
+  api:
+    <<: *app
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health/postgres"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  worker-io:
+    <<: *app
+    command: celery -A ytstudio.interfaces.worker worker -Q io -c 6 -n io@%h
+    depends_on: {api: {condition: service_healthy}}  # api runs the migrations
+    healthcheck: &workerhealth
+      test: ["CMD", "python", "-m", "ytstudio.cli", "health", "worker_io"]
+      interval: 2m
+      timeout: 20s
+      start_period: 3m
+
+  worker-llm:
+    <<: *app
+    command: celery -A ytstudio.interfaces.worker worker -Q llm -c 3 -n llm@%h
+    depends_on: {api: {condition: service_healthy}}
+    healthcheck:
+      <<: *workerhealth
+      test: ["CMD", "python", "-m", "ytstudio.cli", "health", "worker_llm"]
+
+  worker-media:
+    <<: *app
+    build: {context: ., args: {EXTRAS: "--extra media"}}  # faster-whisper only in this image
+    image: ytstudio-media:local
+    command: celery -A ytstudio.interfaces.worker worker -Q media -c 1 --prefetch-multiplier 1 -n media@%h
+    depends_on: {api: {condition: service_healthy}}
+    healthcheck:
+      <<: *workerhealth
+      test: ["CMD", "python", "-m", "ytstudio.cli", "health", "worker_media"]
+
+  beat:  # exactly one
+    <<: *app
+    command: celery -A ytstudio.interfaces.worker beat -s /tmp/celerybeat-schedule
+    depends_on: {api: {condition: service_healthy}}
+    deploy: {replicas: 1}
+    healthcheck:
+      test: ["CMD", "python", "-m", "ytstudio.cli", "health", "beat"]
+      interval: 5m
+      timeout: 20s
+      start_period: 10m
+
+  flower:
+    <<: *app
+    command: celery -A ytstudio.interfaces.worker flower --port=5555 --basic-auth=${FLOWER_USER}:${FLOWER_PASSWORD}
+    ports: ["127.0.0.1:5555:5555"]  # never public; tunnel over SSH
+    depends_on: {redis: {condition: service_healthy}}
+    healthcheck: {disable: true}
+
+  web:  # the only published service: TLS + reverse proxy in front of api
+    image: caddy:2.10.2-alpine
+    command: caddy reverse-proxy --from ${SITE_ADDRESS:-:80} --to api:8000
+    ports: ["80:80", "443:443"]
+    volumes: [caddy:/data]
+    depends_on: {api: {condition: service_healthy}}
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16.10-alpine
+    environment:
+      POSTGRES_DB: ytstudio
+      POSTGRES_USER: ytstudio
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes: [pg:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ytstudio"]
+      interval: 10s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7.4.5-alpine
+    command: redis-server --requirepass ${REDIS_PASSWORD} --appendonly yes
+    volumes: [redis:/data]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a $$REDIS_PASSWORD ping | grep PONG"]
+      interval: 10s
+      retries: 10
+    environment: {REDIS_PASSWORD: "${REDIS_PASSWORD}"}
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:RELEASE.2025-07-23T15-54-02Z
+    command: server /data --console-address :9001
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports: ["127.0.0.1:9001:9001"]  # console, local only
+    volumes: [minio:/data]
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 15s
+      retries: 10
+    restart: unless-stopped
+
+volumes: {pg: {}, redis: {}, minio: {}, media: {}, caddy: {}}

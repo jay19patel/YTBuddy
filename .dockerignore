@@ -1,0 +1,14 @@
+.git
+.venv
+.env
+*.db
+*.db-*
+media/
+tokens/
+YTStudioCred.json
+__pycache__
+.pytest_cache
+.mypy_cache
+.ruff_cache
+docs/
+tests/
