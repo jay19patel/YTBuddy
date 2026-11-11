@@ -123,7 +123,7 @@ def test_lock_contention_skips_second_run(container, user_and_channel):
 def test_owner_check_on_start(container, user_and_channel):
     from ytstudio.domain.errors import NotFound
 
-    other = container.accounts.login("other@example.com")
+    other = container.accounts.owner("other@example.com")
     with pytest.raises(NotFound):
         container.runner.start(other.id, user_and_channel[1], "test", "k3", {}, steps=["t_count"])
 

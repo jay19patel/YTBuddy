@@ -1,5 +1,6 @@
 """Web layer: login, CSRF, owner scoping, resumable upload, security headers, every page renders with data."""
 
+import pytest
 from fastapi.testclient import TestClient
 
 from tests.test_characterization import logged_in
@@ -7,31 +8,48 @@ from ytstudio.adapters.persistence.web_sessions import WebSessions
 from ytstudio.interfaces.web.app import create_app
 
 
-def test_login_flow_with_allowlist(container, db_url):
+@pytest.fixture
+def fresh_redis(container):
+    container.redis.flushdb()
+    yield
+    container.redis.flushdb()
+
+
+def test_pin_opens_the_site(container, db_url, fresh_redis):
     client = TestClient(create_app())
-    r = client.get("/login/start", follow_redirects=False)
-    assert r.status_code == 303 and "ytnonce" in r.cookies
-    r = client.get("/oauth2callback?state=st1&code=c", follow_redirects=False)
+    assert "PIN" in client.get("/login").text
+    r = client.post("/login", data={"pin": "242425"}, follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"] == "/today"
-    sid = r.cookies["ytsid"]
-    assert WebSessions(db_url).get(sid)
+    assert WebSessions(db_url).get(r.cookies["ytsid"])
     assert "httponly" in r.headers["set-cookie"].lower()
+    assert client.get("/today").status_code == 200
 
 
-def test_login_rejected_when_not_allowlisted(container, db_url):
-    container.oauth.email = "stranger@example.com"
+def test_wrong_pin_is_rejected_and_rate_limited(container, db_url, fresh_redis):
     client = TestClient(create_app())
-    client.get("/login/start", follow_redirects=False)
-    r = client.get("/oauth2callback?state=st1&code=c")
-    assert r.status_code == 403 and "ALLOWED_EMAILS" in r.text
+    for _ in range(5):
+        assert client.post("/login", data={"pin": "000000"}).status_code == 401
+    r = client.post("/login", data={"pin": "242425"})  # even the right PIN waits once locked
+    assert r.status_code == 429 and "15 minutes" in r.text
+    assert client.post("/login", data={"pin": "242425"}, headers={"Origin": "https://evil.example"}).status_code == 403
 
 
-def test_oauth_state_is_bound_to_the_browser(container, db_url):
-    attacker = TestClient(create_app())
-    attacker.get("/login/start", follow_redirects=False)
-    victim = TestClient(create_app())  # different browser, no nonce cookie
-    r = victim.get("/oauth2callback?state=st1&code=c")
+def test_google_login_is_gone(container):
+    client = TestClient(create_app())
+    assert client.get("/login/start").status_code in (404, 405)
+
+
+def test_oauth_state_is_bound_to_the_browser(container, user_and_channel, db_url):
+    starter, _ = logged_in(db_url, user_and_channel[0])
+    starter.get("/connect", follow_redirects=False)
+    other_browser = TestClient(create_app())  # no nonce cookie
+    r = other_browser.get("/oauth2callback?state=st1&code=c")
     assert r.status_code == 400
+
+
+def test_access_denied_explains_test_users(container):
+    r = TestClient(create_app()).get("/oauth2callback?error=access_denied&state=x")
+    assert r.status_code == 400 and "Test users" in r.text
 
 
 def test_post_without_csrf_or_cross_origin_is_rejected(container, user_and_channel, db_url):
@@ -58,7 +76,7 @@ def test_other_users_assets_are_not_visible(container, user_and_channel, db_url)
         asset_id = uow.assets.for_run(1)[0].id
     me, _ = logged_in(db_url, user_and_channel[0])
     assert me.get(f"/assets/{asset_id}").status_code == 200
-    other = container.accounts.login("other@example.com")
+    other = container.accounts.owner("other@example.com")
     them, token = logged_in(db_url, other.id)
     assert them.get(f"/assets/{asset_id}").status_code == 404
     assert them.post(f"/assets/{asset_id}/status", data={"status": "approved", "csrf": token}).status_code == 404
@@ -146,3 +164,14 @@ def test_logout(container, user_and_channel, db_url):
     client, token = logged_in(db_url, user_and_channel[0])
     assert client.post("/logout", data={"csrf": token}, follow_redirects=False).status_code == 303
     assert client.get("/today", follow_redirects=False).headers["location"] == "/login"
+
+
+def test_publish_modes_are_one_radio_group(container, user_and_channel, db_url):
+    """Video, Short and Live must share a form owner, or picking Video leaves Live checked."""
+    import re
+
+    client, _ = logged_in(db_url, user_and_channel[0])
+    html = client.get("/publish").text
+    radios = re.findall(r'<input type="radio" name="mode" id="m-(\w+)"[^>]*>', html)
+    owners = re.findall(r'<input type="radio" name="mode" id="m-\w+"[^>]*?form="(\w+)"', html)
+    assert radios == ["video", "short", "live"] and owners == ["upload"] * 3

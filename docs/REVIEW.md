@@ -273,3 +273,4 @@ Your instruction was "do all things", so the open questions were settled with th
 - **Storage:** local disk only (`MEDIA_DIR`). S3/MinIO and boto3 were removed.
 - **LLM:** Gemini (`gemini-pro-latest` / `gemini-flash-latest`) with Mistral (`mistral-large-latest` / `mistral-small-latest`) as fallback. Prices in `config/llm.toml` are conservative estimates from third-party sources and need checking against the official pricing pages.
 - **Notifications:** removed entirely (in-app, email, Telegram; migration `0004`). Events are logged. Job failures show on the Jobs page; reconnect-needed shows a banner; a stale Beat shows in `/health` and the Jobs page.
+- **Sign-in:** a single PIN (`APP_PIN` in `.env`) replaces Google sign-in, at your request. Server-side session, httpOnly cookie, CSRF and owner scoping are unchanged. 5 wrong tries per IP lock it for 15 minutes. A 6-digit PIN is fine on your own machine; on a public server use a long PIN or put the site behind a VPN.

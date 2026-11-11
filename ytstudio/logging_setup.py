@@ -10,9 +10,9 @@ run_id_var: ContextVar[str | None] = ContextVar("run_id", default=None)
 request_id_var: ContextVar[str | None] = ContextVar("request_id", default=None)
 
 # Bare Google access/refresh tokens and API keys, and anything written as key=value / "key": "value".
-BARE = re.compile(r"(ya29\.[\w.-]+|1//[\w.-]+|sk-[\w-]{8,}|AIza[\w-]{20,})")
+BARE = re.compile(r"(ya29\.[\w.-]+|1//[\w.-]+|sk-[\w-]{8,}|AIza[\w-]{20,}|AQ\.[\w.-]{20,})")
 KEYED = re.compile(
-    r"(?i)((?:access_token|refresh_token|client_secret|api_key|password|code|token)[\"']?\s*[:=]\s*[\"']?)"
+    r"(?i)(\b(?:access_token|refresh_token|client_secret|api_key|password|code|token|key)[\"']?\s*[:=]\s*[\"']?)"
     r"[^\s\"'&,}]+"
 )
 

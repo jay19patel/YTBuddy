@@ -5,7 +5,7 @@
 <div class="modes" role="radiogroup" aria-label="What are you publishing?">
   <input type="radio" name="mode" id="m-video" value="video" form="upload" checked><label for="m-video">Video</label>
   <input type="radio" name="mode" id="m-short" value="short" form="upload"><label for="m-short">Short</label>
-  <input type="radio" name="mode" id="m-live" value="live"><label for="m-live">Live</label>
+  <input type="radio" name="mode" id="m-live" value="live" form="upload"><!-- same form = same radio group, so picking Video unpicks Live --><label for="m-live">Live</label>
 </div>
 <form id="upload" class="desk for-upload" action="/upload" method="post" enctype="multipart/form-data">
   <input type="hidden" name="csrf" value="{{ csrf }}">

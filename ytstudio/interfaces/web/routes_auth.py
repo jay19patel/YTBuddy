@@ -1,14 +1,13 @@
-"""Login (Google, allowlisted emails) and channel connect/disconnect. OAuth state + PKCE verifier are stored
+"""PIN sign-in, and channel connect/disconnect through Google. OAuth state + PKCE verifier are stored
 server-side, single-use, 10-minute expiry, and bound to the browser that started the flow."""
 
 import secrets
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse, Response
 
-from ytstudio.adapters.youtube import CHANNEL_SCOPES, LOGIN_SCOPES
-from ytstudio.application.use_cases import NotAllowed
+from ytstudio.adapters.youtube import CHANNEL_SCOPES
 from ytstudio.config import get_settings
 from ytstudio.container import get_container
 from ytstudio.domain.errors import DomainError
@@ -16,6 +15,7 @@ from ytstudio.interfaces.web.app import Page, back, csrf, page, sessions, templa
 
 router = APIRouter()
 NONCE = "ytnonce"
+PIN_TRIES, PIN_WINDOW_S = 5, 15 * 60  # a 6-digit PIN must not be guessable by brute force
 
 
 def cookie(resp: Response, name: str, value: str, max_age: int) -> None:
@@ -29,25 +29,48 @@ def has_client() -> bool:
 def start(purpose: str, user_id: int | None) -> Response:
     s = sessions()
     nonce = secrets.token_urlsafe(24)
-    begun = get_container().oauth.start(LOGIN_SCOPES if purpose == "login" else CHANNEL_SCOPES)
+    begun = get_container().oauth.start(CHANNEL_SCOPES)
     s.save_state(begun.state, purpose, begun.code_verifier, nonce, user_id)
     resp = RedirectResponse(begun.url, status_code=303)
     cookie(resp, NONCE, nonce, 600)
     return resp
 
 
+def login_page(request: Request, error: str | None = None, status: int = 200) -> Response:
+    return templates.TemplateResponse(
+        request,
+        "login.html",
+        {"user": None, "error": error, "pin_set": bool(get_settings().app_pin)},
+        status_code=status,
+    )
+
+
 @router.get("/login")
 def login(request: Request) -> Response:
     if sessions().get(request.cookies.get("ytsid")):
         return RedirectResponse("/today", status_code=303)
-    return templates.TemplateResponse(
-        request, "login.html", {"user": None, "has_client": has_client(), "redirect_uri": get_settings().redirect_uri}
-    )
+    return login_page(request)
 
 
-@router.get("/login/start")
-def login_start() -> Response:
-    return start("login", None)
+@router.post("/login")
+def login_pin(request: Request, pin: str = Form("")) -> Response:
+    s = get_settings()
+    origin = request.headers.get("origin")
+    if origin and urlparse(origin).netloc != urlparse(s.base_url).netloc:
+        return login_page(request, "Cross-site request blocked.", 403)
+    r = get_container().redis
+    key = f"yt:rl:pin:{request.client.host if request.client else 'unknown'}"
+    if int(r.get(key) or 0) >= PIN_TRIES:
+        return login_page(request, "Too many wrong PINs. Wait 15 minutes and try again.", 429)
+    if not s.app_pin or not secrets.compare_digest(pin.strip().encode(), s.app_pin.encode()):
+        r.incr(key)
+        r.expire(key, PIN_WINDOW_S)
+        return login_page(request, "Wrong PIN." if s.app_pin else "Set APP_PIN in .env first.", 401)
+    r.delete(key)
+    user = get_container().accounts.owner()
+    resp = RedirectResponse("/today", status_code=303)
+    cookie(resp, "ytsid", sessions().create(user.id), 14 * 86400)
+    return resp
 
 
 @router.get("/connect")
@@ -64,31 +87,24 @@ def legacy_auth() -> Response:
 def oauth2callback(request: Request, state: str = "", error: str = "") -> Response:
     def fail(msg: str, status: int = 400) -> Response:
         return templates.TemplateResponse(
-            request, "error.html", {"error": msg, "user": None, "retry": "/login"}, status_code=status
+            request, "error.html", {"error": msg, "user": None, "retry": "/today"}, status_code=status
         )
 
+    if error == "access_denied":
+        return fail(
+            "Google refused access. If you did not press Cancel: in Google Cloud Console, OAuth consent "
+            "screen, add this Gmail under Test users, then try again."
+        )
     if error:
-        return fail("Google sign-in was cancelled." if error == "access_denied" else f"Google said: {error}")
+        return fail(f"Google said: {error}")
     pending = sessions().pop_state(state, request.cookies.get(NONCE))
     if not pending:
         return fail("Login session expired or came from another browser. Try again.")
     c = get_container()
-    scopes = LOGIN_SCOPES if pending.purpose == "login" else CHANNEL_SCOPES
-    result = c.oauth.finish(scopes, str(request.url), state, pending.code_verifier)
-
-    if pending.purpose == "login":
-        try:
-            user = c.accounts.login(result.email)
-        except NotAllowed as e:
-            return fail(str(e), 403)
-        resp = RedirectResponse("/today", status_code=303)
-        cookie(resp, "ytsid", sessions().create(user.id), 14 * 86400)
-        resp.delete_cookie(NONCE)
-        return resp
-
+    result = c.oauth.finish(CHANNEL_SCOPES, str(request.url), state, pending.code_verifier)
     current = sessions().get(request.cookies.get("ytsid"))
     if not current or current.user_id != pending.user_id:  # connect must finish as the user who started it
-        return fail("Sign in to YTStudio first, then add the channel.", 403)
+        return fail("Enter your PIN first, then add the channel.", 403)
     try:
         channel = c.accounts.connect(current.user_id, result.token)
     except DomainError as e:

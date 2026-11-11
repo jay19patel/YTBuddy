@@ -3,35 +3,30 @@ from datetime import time, timedelta
 import pytest
 
 from tests.fakes import NOW, transcript
-from ytstudio.application.use_cases import NotAllowed
 from ytstudio.domain.errors import NotFound, PermanentError
 from ytstudio.domain.events import ChannelNeedsReconnect, ShortsReady
 from ytstudio.domain.models import AssetStatus, ChannelStatus, OAuthToken, RunStatus, Schedule
 from ytstudio.ports import ChannelInfo
 
 
-def test_login_allowlist_and_first_user_claims_legacy_channels(container, db_url):
+def test_owner_is_created_once_and_claims_legacy_channels(container, db_url):
     from ytstudio.adapters.persistence import tables as t
     from ytstudio.adapters.persistence.db import session_for
 
-    with session_for(db_url) as s:  # a channel from before logins existed
+    with session_for(db_url) as s:  # a channel from before sign-in existed
         s.add(t.Channel(id="UCold", title="Old", thumb="", creds=""))
         s.commit()
-    with pytest.raises(NotAllowed):
-        container.accounts.login("stranger@example.com")
-    with pytest.raises(NotAllowed):
-        container.accounts.login(None)
-    me = container.accounts.login("ME@example.com")
-    assert container.accounts.login("me@example.com").id == me.id
+    me = container.accounts.owner()
+    assert container.accounts.owner().id == me.id
     with container.uow() as uow:
         assert uow.channels.get("UCold").user_id == me.id
-    other = container.accounts.login("other@example.com")
+    other = container.accounts.owner("other@example.com")
     with container.uow() as uow:
         assert [c.id for c in uow.channels.list(other.id)] == []
 
 
 def test_channel_of_another_user_is_invisible_and_not_stealable(container, user_and_channel):
-    other = container.accounts.login("other@example.com")
+    other = container.accounts.owner("other@example.com")
     with container.uow() as uow, pytest.raises(NotFound):
         uow.channels.get("UCme", other.id)
     with pytest.raises(NotFound):
@@ -93,7 +88,7 @@ def test_review_edit_status_and_bad_fields(container, user_and_channel):
     assert a.data["description"] == "mine" and a.status == AssetStatus.NEEDS_REVIEW
     with pytest.raises(PermanentError):
         container.review.edit(user_id, seo.id, {"user_id": 99})
-    other = container.accounts.login("other@example.com")
+    other = container.accounts.owner("other@example.com")
     with pytest.raises(NotFound):
         container.review.set_status(other.id, seo.id, AssetStatus.APPROVED)
 

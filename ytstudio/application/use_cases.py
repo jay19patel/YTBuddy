@@ -37,8 +37,7 @@ log = logging.getLogger(__name__)
 PERIODS = (7, 28, 90, 365)
 
 
-class NotAllowed(DomainError):
-    pass
+OWNER_EMAIL = "owner@local"  # the single account behind the PIN
 
 
 class Events:
@@ -54,14 +53,11 @@ class Events:
 
 
 class Accounts:
-    def __init__(
-        self, uow: UowFactory, oauth: OAuthProvider, vault: TokenVault, videos: VideoSource, allowed: set[str]
-    ):
-        self.uow, self.oauth, self.vault, self.videos, self.allowed = uow, oauth, vault, videos, allowed
+    def __init__(self, uow: UowFactory, oauth: OAuthProvider, vault: TokenVault, videos: VideoSource):
+        self.uow, self.oauth, self.vault, self.videos = uow, oauth, vault, videos
 
-    def login(self, email: str | None) -> User:
-        if not email or email.lower() not in self.allowed:
-            raise NotAllowed("This Google account is not on the ALLOWED_EMAILS list.")
+    def owner(self, email: str = OWNER_EMAIL) -> User:
+        """The account the PIN unlocks (created on first sign-in)."""
         with self.uow() as uow:
             user = uow.users.by_email(email)
             if not user:

@@ -145,6 +145,8 @@ def render(p: Page, name: str, status_code: int = 200, **ctx: Any) -> Response:
             "accounts": p.channels,
             "current": p.active,
             "flags": {"publish": s.enable_manual_publish},
+            "has_client": bool(s.google_client()[0]),
+            "redirect_uri": s.redirect_uri,
             "success": msg,
             "path": p.request.url.path,
             "today": datetime.now(UTC).date(),

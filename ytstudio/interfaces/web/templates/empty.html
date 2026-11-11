@@ -4,6 +4,12 @@
   <h1>Add your first channel</h1>
   <p>Sign in with the Google account that owns the channel. You can add more channels later with the + button.</p>
   <p class="muted">YTStudio asks for read-only YouTube and Analytics access plus captions access for your own videos{% if flags.publish %} (the same scope lets the Publish page upload when you ask it to){% endif %}.</p>
-  <a class="btn" href="/connect">Add YouTube account</a>
+  {% if has_client %}
+    <a class="btn" href="/connect">Add YouTube account</a>
+    <p class="hint">Google says "access blocked"? In Cloud Console, OAuth consent screen, add your Gmail under Test users.</p>
+  {% else %}
+    <p class="err-text">Google client missing: download the OAuth client JSON (Web application, redirect URI
+      <code>{{ redirect_uri }}</code>) and save it as <code>YTStudioCred.json</code> next to <code>docker-compose.yml</code>, then restart.</p>
+  {% endif %}
 </section>
 {% endblock %}

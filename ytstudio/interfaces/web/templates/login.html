@@ -1,23 +1,17 @@
 {% extends "base.html" %}
-{% block title %}Sign in · YTStudio{% endblock %}
+{% block title %}YTStudio{% endblock %}
 {% block content %}
 <section class="login">
   <h1>YTStudio</h1>
-  {% if has_client %}
-    <p class="muted">Research and prep for your channel. Nothing is ever published for you.</p>
-    <a class="btn" href="/login/start">Sign in with Google</a>
-    <p class="hint">Only email addresses listed in ALLOWED_EMAILS can sign in.</p>
+  <p class="muted">Research and prep for your channel. Nothing is ever published for you.</p>
+  {% if pin_set %}
+    <form method="post" action="/login" class="pin-form">
+      <label class="field" for="pin">PIN</label>
+      <input type="password" id="pin" name="pin" inputmode="numeric" autocomplete="current-password" autofocus required>
+      <button class="btn" type="submit">Open</button>
+    </form>
   {% else %}
-    <div class="empty">
-      <h2>Connect Google first</h2>
-      <ol>
-        <li>Open <a href="https://console.cloud.google.com/" target="_blank" rel="noopener">Google Cloud Console</a> and create a project.</li>
-        <li>Enable <strong>YouTube Data API v3</strong> and <strong>YouTube Analytics API</strong>.</li>
-        <li>Set up the OAuth consent screen (External) and add your Gmail addresses as test users.</li>
-        <li>Create an OAuth client ID of type <strong>Web application</strong> with redirect URI <code>{{ redirect_uri }}</code>.</li>
-        <li>Download the client JSON, save it as <code>YTStudioCred.json</code> next to <code>main.py</code>, then restart.</li>
-      </ol>
-    </div>
+    <p class="err-text">Set <code>APP_PIN</code> in <code>.env</code>, then restart.</p>
   {% endif %}
 </section>
 {% endblock %}

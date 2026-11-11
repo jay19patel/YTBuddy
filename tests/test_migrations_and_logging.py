@@ -121,3 +121,13 @@ def test_json_formatter_redacts_messages_and_tracebacks():
         rec.exc_info = sys.exc_info()
     line = JsonFormatter().format(rec)
     assert "supersecret" not in line and "abc" not in json.loads(line)["msg"]
+
+
+def test_api_key_in_google_error_url_is_redacted():
+    url = (
+        "https://youtube.googleapis.com/youtube/v3/channels?id=UC1&key=AQ.Ab8RN6JJmDNT25XvC8XHKdvirFigEchM6uX&alt=json"
+    )
+    out = redact(f"<HttpError 401 when requesting {url}>")
+    assert "Ab8RN6" not in out and "id=UC1" in out
+    assert redact("AIzaSyD-abcdefghijklmnopqrstuv") == "[REDACTED]"
+    assert redact("idem_key=UC1:daily:2026-11-11") == "idem_key=UC1:daily:2026-11-11"  # not a secret

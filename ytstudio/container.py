@@ -259,7 +259,7 @@ class Container:
 
     @cached_property
     def accounts(self) -> Accounts:
-        return Accounts(self.uow, self.oauth, self.vault, self.youtube, self.s.allowed)
+        return Accounts(self.uow, self.oauth, self.vault, self.youtube)
 
     @cached_property
     def sync(self) -> Sync:

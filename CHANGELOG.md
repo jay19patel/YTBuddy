@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.2 (2026-11-11)
+### Changed
+- The site opens with a PIN (`APP_PIN`) instead of Google sign-in; 5 wrong tries lock it for 15 minutes. Adding a channel still uses Google OAuth.
+- Docker Compose is the one way to run it; the website is on port 8000.
+### Fixed
+- Sidebar was white with white text in dark mode; it now has its own dark colour in both themes.
+
 ## 0.2.1 (2026-11-11)
 ### Changed
 - Google OAuth client is read only from `YTStudioCred.json` (no `GOOGLE_CLIENT_ID`/`SECRET` env vars).

@@ -149,3 +149,12 @@ def test_undecryptable_token_marks_reconnect():
     with pytest.raises(ReconnectNeeded):
         g.creds("UCmissing")
     assert seen == ["UCmissing"]
+
+
+def test_rejected_api_key_falls_back_to_channel_login():
+    g, quota = gateway(
+        [({"status": "401"}, json.dumps({"error": {"message": "API keys are not supported by this API"}})), ok(CHANNEL)]
+    )
+    g.api_key = "AQ.bad"
+    infos = g.channel_infos(["UCme"], using="UCme")
+    assert "UCme" in infos and g.api_key == ""  # switched off for the rest of the process
