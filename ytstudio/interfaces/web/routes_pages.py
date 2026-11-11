@@ -23,7 +23,7 @@ def started(url: str, result: Any) -> Response:
 
 @router.get("/")
 def home() -> Response:
-    return RedirectResponse("/today", status_code=303)
+    return RedirectResponse("/insights", status_code=303)
 
 
 @router.get("/today")
@@ -39,7 +39,8 @@ def today(request: Request, p: Page = Depends(page)) -> Response:
         "today.html",
         data=q.latest_brief(p.user.id, p.channel_id),
         schedule=schedule,
-        run=q.run(p.user.id, int(run_id)) if run_id and run_id.isdigit() else None,
+        run=(q.run(p.user.id, int(run_id)) if run_id and run_id.isdigit() else None)
+        or q.latest_run(p.user.id, p.channel_id),
     )
 
 
@@ -55,6 +56,31 @@ def ideas(request: Request, p: Page = Depends(page)) -> Response:
     status = request.query_params.get("status") or None
     rows = queries().assets(p.user.id, p.channel_id, ["idea"], status=status)
     return render(p, "ideas.html", ideas=rows, status=status)
+
+
+@router.post("/ideas/new")
+def new_idea(
+    title: str = Form(""),
+    details: str = Form(""),
+    effort: str = Form("standard"),
+    mode: str = Form("save"),
+    p: Page = Depends(csrf),
+) -> Response:
+    c = get_container()
+    idea = c.review.add_idea(p.user.id, p.channel_id, title, details, effort)
+    assert idea.id is not None
+    if mode == "script":  # write the script right away
+        return started(f"/assets/{idea.id}", c.review.develop(p.user.id, idea.id))
+    return back("/ideas", "idea_added")
+
+
+@router.get("/scripts")
+def scripts(request: Request, p: Page = Depends(page)) -> Response:
+    if not p.active:
+        return render(p, "empty.html")
+    status = request.query_params.get("status") or None
+    rows = queries().assets(p.user.id, p.channel_id, ["script"], status=status)
+    return render(p, "scripts.html", scripts=rows, status=status)
 
 
 @router.post("/ideas/{idea_id}/develop")
@@ -80,7 +106,7 @@ def asset(request: Request, asset_id: int, p: Page = Depends(page)) -> Response:
         "asset.html",
         a=a,
         developed=developed,
-        run=q.run(p.user.id, int(run_id)) if run_id and run_id.isdigit() else None,
+        run=(q.run(p.user.id, int(run_id)) if run_id and run_id.isdigit() else None) or q.run_for_asset(p.user.id, a),
     )
     if switched:
         cookie(resp, "channel", own["id"], 365 * 86400)
@@ -94,6 +120,15 @@ def set_status(asset_id: int, status: str = Form(...), next: str = Form("/today"
         next if next.startswith("/") and not next.startswith("//") else "/today",
         {"approved": "approved", "discarded": "discarded"}.get(status),
     )
+
+
+@router.post("/assets/{asset_id}/delete")
+def delete_asset(asset_id: int, next: str = Form("/today"), p: Page = Depends(csrf)) -> Response:
+    gone = get_container().review.delete(p.user.id, asset_id)
+    dest = next if next.startswith("/") and not next.startswith("//") else "/today"
+    if dest.startswith(f"/assets/{asset_id}"):  # that page no longer exists: go to the list it belonged to
+        dest = {"idea": "/ideas", "script": "/scripts"}.get(gone.kind, "/today")
+    return back(dest, "deleted")
 
 
 @router.post("/assets/{asset_id}/edit")
@@ -188,7 +223,7 @@ def video_insight(video_id: str, p: Page = Depends(page)) -> Response:
     if not v:
         raise HTTPException(404)
     points = [RetentionPoint(**r) for r in (v.get("retention") or [])]
-    analysis = get_container().scorers["retention"].analyze(points, v["duration_s"], None) if points else None
+    analysis = get_container().scorers["retention"].analyze(points, v["duration_s"]) if points else None
     return render(p, "video.html", v=v, points=points, analysis=analysis)
 
 

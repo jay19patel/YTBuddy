@@ -58,6 +58,8 @@ class Channel:
     videos: int = 0
     uploads_playlist: str | None = None
     videos_synced_at: datetime | None = None
+    about: str = ""  # YouTube About description, kept in sync both ways
+    keywords: str = ""
 
 
 @dataclass

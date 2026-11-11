@@ -91,6 +91,7 @@ def yt() -> fakes.FakeYouTube:
 def container(db_url: str, yt: fakes.FakeYouTube, tmp_path: Path) -> Container:
     s = Settings()
     dispatcher = InlineDispatcher()
+    prompts = FilePromptRepository(ROOT / "prompts", ROOT / "vendor" / "youtube-agent-skill")
     c = Container(
         s,
         clock=fakes.FakeClock(),
@@ -113,12 +114,12 @@ def container(db_url: str, yt: fakes.FakeYouTube, tmp_path: Path) -> Container:
                 "niche_search", [fakes.vid("t1", "UCa", 9000, 3, "I tried rent hacks"), fakes.vid("own1", "UCme", 900)]
             ),
         ],
-        llm=FakeLLM(fakes.llm_responses()),
+        llm=FakeLLM(fakes.llm_responses(), prompts=prompts),
         notifier=fakes.RecordingNotifier(),
         dispatcher=dispatcher,
         storage=LocalStorage(tmp_path / "media"),
         media={"media": fakes.FakeMedia(), "images": fakes.FakeImages(), "transcriber": fakes.FakeTranscriber()},
-        prompts=FilePromptRepository(ROOT / "prompts", ROOT / "vendor" / "youtube-agent-skill"),
+        prompts=prompts,
     )
     set_container(c)
     yield c

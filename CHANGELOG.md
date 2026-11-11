@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.3.0 (2026-11-11)
+### Added
+- AI models and keys on their own LLM page (sidebar, under Sign out): paste provider keys (Gemini, Mistral, OpenAI, Anthropic) and choose the main and fallback model for the fast, smart and long aliases, per account (one box, no global setting). Keys are stored encrypted and never shown again; "Test" and "Refresh model lists" buttons check them. Migration `0010`. Removed from `.env` and the code: `GEMINI_API_KEY`, `MISTRAL_API_KEY`, `GOOGLE_API_KEY` (public YouTube reads now always use your channel's login) and `LITELLM_PROXY_URL`/`KEY`. Nothing about AI is read from the environment any more.
+- Delete ideas, scripts, packages and SEO (deleting an idea also removes what was written for it).
+- The run panel on a page now survives a refresh: the latest run for the asset or channel shows, polls only while it is running, and a failed run offers Retry.
+- Channel-first layout: the sidebar lists only channels; each channel opens on Insights, with tabs for Ideas, Shorts, Trends, Jobs and Settings.
+- Channel About sync: Settings shows the YouTube description and keywords. Saving pushes them to YouTube (`channels.update`, 50 units); edits made in YouTube Studio come back with the channel stats sync. The ideas prompt uses them. Migration `0008`.
+- Shorts are kept: the pipeline, master upload, Shorts page and media worker were removed and then restored in this release. Migration `0007` drops their tables and `0009` recreates them, so a database already at `0007` comes back too.
+- Your own ideas: type a topic and details on the Ideas page, then save it or have a script written right away.
+- Scripts page: every script for the channel (the daily one and the ones you asked for), with hook score and review actions.
+- Publish page fills the title, description and tags from a script's package and SEO, and can schedule the upload (private until the time you pick, in the channel's time zone).
+### Changed
+- Everything is per channel: `voice.md` moved from the account to each channel (migration `0006`), the Jobs page shows only the selected channel's runs, opening an asset switches to its channel, and the channel name shows on every page.
+
 ## 0.2.2 (2026-11-11)
 ### Changed
 - Sign-in is Google-only and strict: only Gmail addresses in `ALLOWED_EMAILS` get in (an empty list means nobody, with no first-user exception). A PIN was tried for a few hours and removed. Data belongs to the Gmail, so any device that signs in with it sees the same history.

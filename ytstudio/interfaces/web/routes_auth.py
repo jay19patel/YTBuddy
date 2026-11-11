@@ -71,7 +71,7 @@ def _login_error(request: Request, error: str, status: int = 400) -> Response:
 def login(request: Request) -> Response:
     """Redirect to Google immediately; there is no manual login form."""
     if sessions().get(request.cookies.get("ytsid")):
-        return RedirectResponse("/today", status_code=303)
+        return RedirectResponse("/insights", status_code=303)
     if not has_client():
         return _login_error(request, "Google OAuth client not configured. Add YTStudioCred.json and restart.", 503)
     return _start_oauth("login", LOGIN_SCOPES, None)
@@ -128,7 +128,7 @@ def oauth2callback(request: Request, state: str = "", error: str = "") -> Respon
             user = c.accounts.owner(email)
         except NotAllowed as e:
             return fail(str(e), 403)
-        resp = RedirectResponse("/today", status_code=303)
+        resp = RedirectResponse("/insights", status_code=303)
         cookie(resp, "ytsid", sessions().create(user.id), 14 * 86400)
         resp.delete_cookie(NONCE)
         return resp
@@ -177,7 +177,7 @@ def use(request: Request, channel_id: str, p: Page = Depends(page)) -> Response:
     # Stay on the same page; path only, so no redirect off-site.
     path = urlparse(request.headers.get("referer", "/")).path
     if not path.startswith("/") or path.startswith(("//", "/assets/", "/insights/video/")):
-        path = "/today"  # a detail page belongs to one channel; the other channel's list page is the right place
+        path = "/insights"  # a detail page belongs to one channel; the other channel's list page is the right place
     resp = RedirectResponse(path, status_code=303)
     if any(ch["id"] == channel_id for ch in p.channels):
         cookie(resp, "channel", channel_id, 365 * 86400)
@@ -187,4 +187,4 @@ def use(request: Request, channel_id: str, p: Page = Depends(page)) -> Response:
 @router.post("/channels/{channel_id}/disconnect")
 def disconnect(channel_id: str, p: Page = Depends(csrf)) -> Response:
     get_container().accounts.disconnect(p.user.id, channel_id)
-    return back("/today", "disconnected")
+    return back("/insights", "disconnected")

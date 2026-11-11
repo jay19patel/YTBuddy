@@ -108,7 +108,6 @@ class Container:
                 self.cache,
                 self.clock,
                 on_reconnect=lambda ch: self.accounts.mark_reconnect(ch, self.events.publish),
-                api_key=self.s.google_api_key,
             )
 
         return self._pick("youtube", build)
@@ -143,14 +142,33 @@ class Container:
         return load_llm_config(self.s.llm_config_file)
 
     @cached_property
+    def llm_settings(self) -> Any:
+        from ytstudio.adapters.llm_models import list_models
+        from ytstudio.adapters.llm_settings import DbLLMSettings
+        from ytstudio.adapters.token_vault import TokenCipher
+        from ytstudio.application.llm_settings import LLMSettings
+
+        def build() -> Any:
+            defaults = {a: list(spec["models"]) for a, spec in self.llm_config["aliases"].items()}
+            return LLMSettings(
+                DbLLMSettings(self.s.database_url, TokenCipher(self.s.token_encryption_key)),
+                defaults,
+                self.cache,
+                list_models,
+                checker=lambda user_id, alias: self.llm.check(user_id, alias),
+            )
+
+        return self._pick("llm_settings", build)
+
+    @cached_property
     def llm(self) -> Any:
         from ytstudio.adapters.llm import LiteLLMAdapter, build_router
         from ytstudio.adapters.redis_kv import RedisCache
 
         def build() -> Any:
-            router = build_router(self.llm_config, self.s.litellm_proxy_url, self.s.litellm_proxy_key)
             return LiteLLMAdapter(
-                router,
+                self.llm_settings.effective,
+                lambda eff: build_router(self.llm_config, eff),
                 self.llm_config,
                 self.prompts,
                 self.uow,

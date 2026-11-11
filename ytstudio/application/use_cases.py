@@ -7,10 +7,13 @@ from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from ytstudio.application.pipeline import PipelineRunner, StartResult
-from ytstudio.application.schemas import ChannelProfileOut
+from ytstudio.application.schemas import ChannelProfileOut, ChannelSetupOut
 from ytstudio.domain.errors import DomainError, NotFound, PermanentError, ReconnectNeeded
 from ytstudio.domain.events import ChannelNeedsReconnect, Event
+from ytstudio.domain.metadata import clean_description, format_keywords
+from ytstudio.domain.metrics import median_views, top_and_bottom
 from ytstudio.domain.models import (
+    Asset,
     AssetStatus,
     Channel,
     ChannelStatus,
@@ -308,6 +311,54 @@ class Profiles:
             uow.commit()
         return sched
 
+    def from_brief(self, user_id: int, channel_id: str, brief: str) -> tuple[Channel, Schedule]:
+        """Draft the channel's About text, keywords and profile from a few plain words, using the channel's real
+        uploads as evidence. Returns copies with the draft applied; nothing is saved until the owner saves."""
+        brief = brief.strip()
+        if len(brief) < 15:
+            raise PermanentError("Write a few words about your channel first: what it is about and who it is for.")
+        with self.uow() as uow:
+            ch = uow.channels.get(channel_id, user_id)
+            sched = uow.schedules.get(channel_id)
+            vids = uow.videos.recent(channel_id, datetime(2000, 1, 1, tzinfo=ZoneInfo("UTC")))
+        longform = [v for v in vids if not v.is_short] or vids
+        top, _ = top_and_bottom(longform, 5)
+        out = self.llm.generate(
+            LLMRequest(
+                alias="smart",
+                template="channel_setup",
+                user_id=user_id,
+                step="channel_setup",
+                regenerate=True,  # pressing the button again should give a fresh take, not the cached one
+                variables={
+                    "channel": ch.title,
+                    "brief": brief[:3000],
+                    "current_about": ch.about,
+                    "current_keywords": ch.keywords,
+                    "niche": sched.niche,
+                    "language": sched.language,
+                    "region": sched.region,
+                    "voice": sched.voice_md.strip(),
+                    "titles": [v.title for v in vids][:30],
+                    "median_views": int(median_views(longform)),
+                    "top": [{"title": v.title, "views": v.views, "multiple": m} for v, m in top],
+                },
+            ),
+            ChannelSetupOut,
+        )
+        return (
+            replace(ch, about=clean_description(out.description), keywords=format_keywords(out.keywords)),
+            replace(
+                sched,
+                niche=out.niche.strip()[:300],
+                language=out.language,
+                region=out.region.strip().upper()[:2] or sched.region,
+                custom_topics=[t.strip() for t in out.topics if t.strip()][:8],
+                target_minutes=min(max(out.target_minutes, 1), 120),
+                voice_md=out.voice_md.strip()[:20000],
+            ),
+        )
+
 
 REGEN_STEP = {
     "idea": "generate_ideas",
@@ -348,6 +399,16 @@ class Review:
             uow.assets.update(a)
             uow.commit()
 
+    def delete(self, user_id: int, asset_id: int) -> Asset:
+        """Permanently delete an idea (with the script, package and SEO written for it), a script, package or SEO."""
+        with self.uow() as uow:
+            a = uow.assets.get(asset_id, user_id)
+            if a.kind not in ("idea", "script", "package", "seo"):
+                raise PermanentError(f"A {a.kind} cannot be deleted.")
+            uow.assets.delete(asset_id, user_id)
+            uow.commit()
+        return a
+
     def edit(self, user_id: int, asset_id: int, changes: dict[str, Any]) -> None:
         bad = set(changes) - EDITABLE
         if bad:
@@ -366,12 +427,37 @@ class Review:
             seed = uow.runs.get(a.run_id).outputs if a.run_id else {}
         if a.kind not in REGEN_STEP:
             raise PermanentError(f"{a.kind} cannot be regenerated")
+        if a.data.get("source") == "manual":  # regenerating would replace your words with a model's idea
+            raise PermanentError("Your own idea is not regenerated. Edit it, or develop it into a script.")
         step = REGEN_STEP[a.kind]
         inputs: dict[str, Any] = {"regenerate": True, "asset_id": a.id, "target_step": step, "seed_outputs": seed}
         if "idea" in a.data:
             inputs["idea"] = a.data["idea"]
         key = f"{a.channel_id}:regen:{a.id}:{int(self.clock.now().timestamp())}"
         return self.runner.start(user_id, a.channel_id, "regen", key, inputs, steps=[step, "save_section"])
+
+    def add_idea(self, user_id: int, channel_id: str, title: str, details: str = "", effort: str = "standard") -> Asset:
+        """An idea you typed yourself, for this channel. Develop it into a script like any other idea."""
+        title = " ".join(title.split())[:200]
+        if not title:
+            raise PermanentError("Write the idea first.")
+        idea = {
+            "title": title,
+            "angle": details.strip()[:2000],
+            "why_now": "",
+            "outlier_refs": [],
+            "difference": "",
+            "builds_on": [],
+            "effort": effort if effort in ("short", "standard", "anchor") else "standard",
+            "source": "manual",
+        }
+        with self.uow() as uow:
+            uow.channels.get(channel_id, user_id)  # owner check
+            added = uow.assets.add(
+                Asset(id=None, user_id=user_id, channel_id=channel_id, kind="idea", title=title, data=idea)
+            )
+            uow.commit()
+        return added
 
     def develop(self, user_id: int, idea_asset_id: int) -> StartResult:
         with self.uow() as uow:

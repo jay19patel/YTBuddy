@@ -96,6 +96,8 @@ class SqlChannels(_Repo):
             videos=r.videos,
             uploads_playlist=r.uploads_playlist,
             videos_synced_at=aware(r.videos_synced_at),
+            about=r.about,
+            keywords=r.keywords,
         )
 
     def _row(self, channel_id: str, user_id: int | None = None) -> t.Channel:
@@ -119,6 +121,7 @@ class SqlChannels(_Repo):
             raise PermanentError("This YouTube channel is already connected to another YTStudio account.")
         r = r or t.Channel(id=info.id, title=info.title, thumb=info.thumb, creds="")
         r.user_id, r.title, r.thumb, r.status = user_id, info.title, info.thumb, ChannelStatus.OK
+        r.about, r.keywords = info.description, info.keywords
         r.uploads_playlist = info.uploads_playlist or r.uploads_playlist
         self.s.add(r)
         self.s.flush()
@@ -133,10 +136,16 @@ class SqlChannels(_Repo):
         if not (r := self.s.get(t.Channel, info.id)):
             return  # removed while the sync was running
         r.title, r.thumb = info.title, info.thumb
+        r.about, r.keywords = info.description, info.keywords  # edits made in YouTube Studio come back here
         r.subscribers, r.views, r.videos, r.stats_at = info.subscribers, info.views, info.videos, utcnow()
         r.uploads_playlist = info.uploads_playlist or r.uploads_playlist
         self.s.add(r)
         self.s.merge(t.Snapshot(channel_id=r.id, day=day, subscribers=r.subscribers, views=r.views, videos=r.videos))
+
+    def set_about(self, channel_id: str, about: str, keywords: str) -> None:
+        r = self._row(channel_id)
+        r.about, r.keywords = about, keywords
+        self.s.add(r)
 
     def mark_videos_synced(self, channel_id: str, at: datetime) -> None:
         r = self._row(channel_id)
@@ -518,6 +527,18 @@ class SqlAssets(_Repo):
             self._dom(r)
             for r in self.s.exec(select(t.AssetRow).where(t.AssetRow.run_id == run_id).order_by(col(t.AssetRow.id)))
         ]
+
+    def delete(self, asset_id: int, user_id: int) -> int:
+        """Delete an asset and what hangs under it (an idea's script, package and SEO). Returns how many went."""
+        row = self.s.get(t.AssetRow, asset_id)
+        if not row or row.user_id != user_id:
+            raise NotFound("asset")
+        children = list(
+            self.s.exec(select(t.AssetRow).where(t.AssetRow.parent_id == asset_id, t.AssetRow.user_id == user_id))
+        )
+        for child in [*children, row]:
+            self.s.delete(child)
+        return len(children) + 1
 
 
 class SqlLLMCalls(_Repo):

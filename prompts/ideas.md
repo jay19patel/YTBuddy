@@ -15,6 +15,10 @@ The creator's voice profile (respect what they will not claim):
 === user ===
 Channel: {{ channel }}. Niche: {{ niche }}. Language: {{ language }}. Region: {{ region }}. Target length: {{ target_minutes }} minutes.
 
+The channel's YouTube About (what it promises viewers; keep ideas inside this promise):
+{{ about or "No About text set." }}
+Channel keywords: {{ keywords or "none" }}
+
 Outlier videos in the niche right now (multiple = views / that channel's own median; formula = which hook formula the title matches):
 {% for o in outliers %}- [{{ o.video_id }}] "{{ o.title }}" by {{ o.channel_title }}: {{ o.multiple }}x its channel median, {{ o.age_days }} days old, {{ o.velocity }} views/day, formula: {{ o.formula }}
 {% else %}- none cleared the threshold today; rely on the creator's own performance instead

@@ -21,9 +21,21 @@
     </label>
   </div>
   <div class="panel">
+    {% if drafts %}
+    <div class="row"><label class="field" for="u-fill">Fill from your scripts</label>
+      <select id="u-fill" data-fill>
+        <option value="">Choose a script idea…</option>
+        {% for d in drafts %}<option value="{{ loop.index0 }}" data-titles='{{ d.titles | tojson }}' data-description='{{ d.description | tojson }}' data-tags='{{ d.tags | tojson }}'>{{ d.label }}</option>{% endfor %}
+      </select>
+      <div class="actions" data-title-options></div>
+      <div class="hint">Fills the title, description and tags the assistant wrote for that idea. Change anything before uploading.</div></div>
+    {% endif %}
     <div class="row"><label class="field" for="u-title">Title</label><input type="text" id="u-title" name="title" maxlength="100" required></div>
     <div class="row"><label class="field" for="u-desc">Description</label><textarea id="u-desc" name="description" rows="5"></textarea><div class="hint for-short">#Shorts is added for you.</div></div>
     <div class="row"><label class="field" for="u-tags">Tags</label><input type="text" id="u-tags" name="tags" placeholder="cooking, quick recipes"><div class="hint">Separate with commas.</div></div>
+    <div class="row"><label class="field" for="u-when">Schedule (optional)</label>
+      <input type="datetime-local" id="u-when" name="publish_at">
+      <div class="hint">Time zone: {{ tz }} (change it in Settings). Leave empty to upload now with the visibility below. A scheduled video is uploaded as private and YouTube makes it public at that time.</div></div>
     <div class="row"><label class="field" for="u-privacy">Visibility</label>
       <select id="u-privacy" name="privacy"><option value="private">Private</option><option value="unlisted">Unlisted</option><option value="public">Public</option></select></div>
     <button class="btn" type="submit"><span class="for-video">Upload video</span><span class="for-short">Upload Short</span></button>

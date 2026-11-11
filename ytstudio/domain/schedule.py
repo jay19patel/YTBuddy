@@ -3,6 +3,8 @@
 from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
+from ytstudio.domain.errors import PermanentError
+
 PACIFIC = ZoneInfo("America/Los_Angeles")
 
 
@@ -41,3 +43,18 @@ def next_quota_reset(now: datetime) -> datetime:
 
 def quota_day(now: datetime) -> date:
     return now.astimezone(PACIFIC).date()
+
+
+def parse_local_datetime(
+    value: str, tz_name: str, now: datetime, min_lead: timedelta = timedelta(minutes=10)
+) -> datetime:
+    """A <input type="datetime-local"> value ("2026-11-20T18:30") in the channel's time zone, as UTC.
+    YouTube only schedules a video for a time in the future, so a time sooner than min_lead from now is refused."""
+    try:
+        local = datetime.fromisoformat(value.strip())
+    except ValueError as e:
+        raise PermanentError("That schedule time is not valid. Pick a date and time.") from e
+    when = local_wall_to_utc(local.date(), local.time(), ZoneInfo(tz_name))
+    if when < now + min_lead:
+        raise PermanentError(f"Pick a schedule time at least {int(min_lead.total_seconds() // 60)} minutes from now.")
+    return when

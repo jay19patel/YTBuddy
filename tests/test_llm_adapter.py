@@ -10,6 +10,7 @@ from tests.fakes import DictCache, NoLimit
 from ytstudio.adapters.llm import LiteLLMAdapter, build_router, extract_json
 from ytstudio.domain.errors import BudgetExceeded, LLMOutputInvalid, TransientError
 from ytstudio.domain.events import BudgetReached
+from ytstudio.domain.llm import EffectiveLLM
 from ytstudio.ports import LLMRequest, PromptTemplate
 
 
@@ -48,10 +49,15 @@ def cfg(primary, fallback=None):
 def adapter_factory(container, user_and_channel):
     published = []
 
-    def make(primary, fallback=None, cache=None):
+    def make(primary, fallback=None, cache=None, keys=None):
         params, router = cfg(primary, fallback)
+        saved = (
+            {"gemini": "AIza-test-key", "mistral": "test-key"} if keys is None else keys
+        )  # keys saved on the LLM page
+        eff = EffectiveLLM(aliases={"fast": list(params["aliases"]["fast"]["models"])}, keys=saved)
         return LiteLLMAdapter(
-            router,
+            lambda user_id: eff,
+            lambda _eff: router,
             params,
             Prompts(),
             container.uow,
@@ -126,14 +132,15 @@ def test_one_repair_then_fail(adapter_factory, user_and_channel, container):
 def test_repair_succeeds(adapter_factory, user_and_channel):
     llm, _ = adapter_factory('{"wrong": 1}')
     replies = iter(['{"wrong": 1}', '{"answer": "fixed"}'])
-    real = llm.router.completion
+    router = llm._router(llm.resolver(user_and_channel[0]))
+    real = router.completion
 
     def completion(**kw):
-        for dep in llm.router.model_list:
+        for dep in router.model_list:
             dep["litellm_params"]["mock_response"] = next(replies)
         return real(**kw)
 
-    llm.router.completion = completion
+    router.completion = completion
     assert llm.generate(req(user_and_channel[0]), Out).answer == "fixed"
 
 
@@ -154,13 +161,6 @@ def test_budget_blocks_non_critical_and_notifies(adapter_factory, user_and_chann
 def test_extract_json():
     assert json.loads(extract_json('Sure!\n```json\n{"a": {"b": 1}}\n```')) == {"a": {"b": 1}}
     assert extract_json("nothing") == "nothing"
-
-
-def test_proxy_mode_routes_aliases_to_proxy():
-    r = build_router({"aliases": {"smart": {"models": ["gemini/gemini-pro-latest", "x/y"]}}}, "http://proxy:4000", "k")
-    dep = r.model_list[0]
-    assert dep["model_name"] == "smart" and dep["litellm_params"]["model"] == "litellm_proxy/smart"
-    assert len(r.model_list) == 1
 
 
 def test_shipped_config_uses_aliases_only():
@@ -189,7 +189,7 @@ def test_resolved_model_name_falls_back_to_alias_price(adapter_factory, user_and
     monkeypatch.setattr(litellm, "completion_cost", lambda **kw: (_ for _ in ()).throw(ValueError("unknown")))
     resp = type("R", (), {})()
     assert (
-        llm._cost(resp, "gemini-9-pro-preview", (1_000_000, 0), "fast") == 0.1
+        llm._cost(resp, "gemini-9-pro-preview", (1_000_000, 0), "gemini/gemini-flash-latest") == 0.1
     )  # test config: flash input is 0.10 per 1M
 
 
@@ -199,6 +199,42 @@ def test_rejected_api_key_is_permanent_and_names_the_fix(adapter_factory, user_a
     from ytstudio.domain.errors import PermanentError
 
     bad = litellm.AuthenticationError(message="API key not valid", llm_provider="gemini", model="gemini-flash-latest")
-    llm, _ = adapter_factory(bad)
-    with pytest.raises(PermanentError, match="GEMINI_API_KEY"):  # not retried as if the network were down
+    llm, _ = adapter_factory(bad, keys={"gemini": "AIza-a-saved-but-wrong-key"})
+    with pytest.raises(PermanentError, match=r"rejected the API key.*LLM page"):  # not retried as if the network died
         llm.generate(req(user_and_channel[0]), Out)
+
+
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        ("PaymentRequiredError", "free tier does not include it"),
+        ("NotFoundError", "has no model called gemini/gemini-flash-latest"),
+    ],
+)
+def test_billing_and_unknown_model_errors_are_permanent_and_say_what_to_do(
+    adapter_factory, user_and_channel, error, expected
+):
+    import litellm
+
+    from ytstudio.domain.errors import PermanentError
+
+    boom = getattr(litellm, error)(message="x", model="gemini-flash-latest", llm_provider="gemini")
+    llm, _ = adapter_factory(boom)
+    with pytest.raises(PermanentError, match=expected):
+        llm.generate(req(user_and_channel[0]), Out)
+
+
+def test_a_missing_key_says_to_add_one_on_the_llm_page_before_any_call(adapter_factory, user_and_channel):
+    from ytstudio.domain.errors import PermanentError
+
+    llm, _ = adapter_factory('{"answer": "never reached"}', keys={})  # nothing saved for any model of the alias
+    with pytest.raises(PermanentError, match=r"No Google Gemini API key is saved yet.*LLM page"):
+        llm.generate(req(user_and_channel[0]), Out)
+    llm, _ = adapter_factory('{"answer": "ok"}', "x", keys={"mistral": "test-key"})  # a fallback with a key is enough
+    assert llm.generate(req(user_and_channel[0]), Out).answer == "ok"
+
+
+def test_keys_are_never_taken_from_the_environment(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "from-the-environment")
+    router = build_router({"aliases": {"fast": {"models": ["gemini/gemini-flash-latest"]}}, "defaults": {}})
+    assert "api_key" not in router.model_list[0]["litellm_params"]  # only keys saved on the LLM page are passed on

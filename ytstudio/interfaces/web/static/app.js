@@ -18,6 +18,11 @@ document.querySelectorAll("[data-autosubmit]").forEach((s) => s.addEventListener
 document.querySelectorAll("form[data-confirm]").forEach((f) =>
   f.addEventListener("submit", (e) => { if (!confirm(f.dataset.confirm)) e.preventDefault(); }));
 
+// Slow buttons (AI calls): show that something is happening and stop double clicks.
+document.querySelectorAll("button[data-busy]").forEach((b) => b.form.addEventListener("submit", () => {
+  setTimeout(() => { b.disabled = true; b.textContent = b.dataset.busy; }, 0);
+}));
+
 // Run progress: poll until the run settles, then reload to show the results.
 document.querySelectorAll("[data-run]").forEach((box) => {
   const id = box.dataset.run;
@@ -136,6 +141,26 @@ if (form) {
     if (!document.getElementById("u-title").value) document.getElementById("u-title").value = f.name.replace(/\.[^.]+$/, "");
   });
   document.querySelectorAll("input[name=mode]").forEach((r) => r.addEventListener("change", check));
+
+  // Fill title, description and tags from a script idea's package and SEO.
+  const fill = document.querySelector("[data-fill]");
+  if (fill) fill.addEventListener("change", () => {
+    const o = fill.selectedOptions[0];
+    if (!o || !o.value) return;
+    const titles = JSON.parse(o.dataset.titles), tags = JSON.parse(o.dataset.tags);
+    const put = (id, v) => { document.getElementById(id).value = v; };
+    put("u-title", titles[0] || "");
+    put("u-desc", JSON.parse(o.dataset.description));
+    put("u-tags", tags.join(", "));
+    document.querySelector("[data-title-options]").replaceChildren(...titles.slice(1).map((t) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "copy";
+      b.textContent = "Use: " + t;
+      b.addEventListener("click", () => put("u-title", t));
+      return b;
+    }));
+  });
   ["dragenter", "dragover"].forEach((e) => drop.addEventListener(e, () => drop.classList.add("drag")));
   ["dragleave", "drop"].forEach((e) => drop.addEventListener(e, () => drop.classList.remove("drag")));
   form.addEventListener("submit", (e) => {

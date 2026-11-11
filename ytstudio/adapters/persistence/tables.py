@@ -46,6 +46,8 @@ class Channel(SQLModel, table=True):
     status: str = "ok"
     uploads_playlist: str | None = None
     videos_synced_at: datetime | None = None
+    about: str = ""
+    keywords: str = ""
 
 
 class Snapshot(SQLModel, table=True):
@@ -206,3 +208,22 @@ class MediaFile(SQLModel, table=True):
     received: int = 0
     status: str = "uploading"  # uploading | ready
     created_at: datetime
+
+
+class LLMKeyRow(SQLModel, table=True):
+    """An API key for one provider, encrypted. scope is "global" or "user:<id>"."""
+
+    __tablename__ = "llm_key"
+    scope: str = Field(primary_key=True)
+    provider: str = Field(primary_key=True)
+    secret: str
+    updated_at: datetime
+
+
+class LLMAliasRow(SQLModel, table=True):
+    """The models (main first, then fallbacks) one alias uses for a scope."""
+
+    __tablename__ = "llm_alias"
+    scope: str = Field(primary_key=True)
+    alias: str = Field(primary_key=True)
+    models: list[str] = Field(sa_column=Column(JSON, nullable=False))

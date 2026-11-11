@@ -1,6 +1,8 @@
 """LLM adapter over the LiteLLM Router.
 
-- Code asks for an alias (fast/smart/long); config/llm.toml maps it to a primary model plus fallbacks.
+- Code asks for an alias (fast/smart/long). Which models and keys it maps to is resolved per user: the user's own
+  settings, else the global settings, else the defaults in config/llm.toml (see domain/llm.py). Keys come only
+  from those saved settings, never from the environment.
 - The Router owns provider retries, timeouts and fallbacks. When it gives up we raise TransientError once,
   so Celery's retry is the only outer retry and the two never multiply.
 - Output is validated against a Pydantic schema; one repair call, then LLMOutputInvalid.
@@ -23,6 +25,8 @@ from pydantic import BaseModel, ValidationError
 
 from ytstudio.domain.errors import BudgetExceeded, LLMOutputInvalid, PermanentError, TransientError
 from ytstudio.domain.events import BudgetReached, Event
+from ytstudio.domain.llm import PROVIDERS, EffectiveLLM, provider_of
+from ytstudio.logging_setup import redact
 from ytstudio.ports import LLMRequest, PromptRepository, RateLimiter, T, UowFactory
 
 log = logging.getLogger(__name__)
@@ -32,29 +36,21 @@ def load_llm_config(path: Path) -> dict[str, Any]:
     return tomllib.loads(path.read_text())
 
 
-def build_router(cfg: dict[str, Any], proxy_url: str = "", proxy_key: str = "") -> Any:
+def build_router(cfg: dict[str, Any], eff: EffectiveLLM | None = None) -> Any:
+    """A LiteLLM Router for one effective configuration. Without `eff` it uses the defaults in config/llm.toml."""
     from litellm import Router
 
     d = cfg.get("defaults", {})
     model_list: list[dict[str, Any]] = []
     fallbacks: list[dict[str, list[str]]] = []
-    for alias, spec in cfg["aliases"].items():
-        if proxy_url:  # the proxy owns fallbacks; aliases are its model names
-            model_list.append(
-                {
-                    "model_name": alias,
-                    "litellm_params": {
-                        "model": f"litellm_proxy/{alias}",
-                        "api_base": proxy_url,
-                        "api_key": proxy_key or None,
-                    },
-                }
-            )
-            continue
+    aliases = {a: s["models"] for a, s in cfg["aliases"].items()} if eff is None else eff.aliases
+    for alias, models in aliases.items():
         names = []
-        for i, model in enumerate(spec["models"]):
+        for i, model in enumerate(models):
             name = alias if i == 0 else f"{alias}#{i}"
-            params = {"model": model} | spec.get("params", {})
+            params = {"model": model} | cfg["aliases"].get(alias, {}).get("params", {})
+            if eff and (key := eff.keys.get(provider_of(model))):
+                params["api_key"] = key  # saved on the LLM page
             model_list.append({"model_name": name, "litellm_params": params})
             names.append(name)
         if len(names) > 1:
@@ -82,7 +78,8 @@ def schema_version(schema: type[BaseModel]) -> str:
 class LiteLLMAdapter:
     def __init__(
         self,
-        router: Any,
+        resolver: Callable[[int], EffectiveLLM],
+        router_factory: Callable[[EffectiveLLM], Any],
         cfg: dict[str, Any],
         prompts: PromptRepository,
         uow: UowFactory,
@@ -92,13 +89,28 @@ class LiteLLMAdapter:
         cache_ttl_s: int,
         claim_once: Callable[[str], bool],
     ):
-        self.router, self.cfg, self.prompts, self.uow = router, cfg, prompts, uow
+        self.resolver, self.router_factory = resolver, router_factory
+        self._routers: dict[str, Any] = {}  # one Router per distinct configuration; changing Settings makes a new one
+        self.cfg, self.prompts, self.uow = cfg, prompts, uow
         self.cache, self.limiter, self.publish, self.ttl = cache, limiter, publish, cache_ttl_s
         self.claim_once = claim_once  # Redis SET NX: notify about the budget once per user per day
 
     # ----- public -----
 
+    def check(self, user_id: int, alias: str) -> dict[str, Any]:
+        """A tiny real call through the alias (keys, models and fallbacks as this user has them): proves it works."""
+        eff = self.resolver(user_id)
+        started = time.monotonic()
+        resp = self._call(eff, alias, [{"role": "user", "content": "Reply with the single word OK."}], 64)
+        return {
+            "model": str(getattr(resp, "model", eff.aliases[alias][0])),
+            "ms": int((time.monotonic() - started) * 1000),
+        }
+
     def generate(self, req: LLMRequest, schema: type[T]) -> T:
+        eff = self.resolver(req.user_id)
+        if req.alias not in eff.aliases:
+            raise PermanentError(f"No model is set for '{req.alias}'. Choose one in Settings, AI models and keys.")
         tpl, system, user = self.prompts.render(req.template, req.variables)
         system += (
             "\n\nReply with one JSON object and nothing else. It must validate against this JSON Schema:\n"
@@ -108,6 +120,7 @@ class LiteLLMAdapter:
         key = "yt:llm:" + ":".join(
             [
                 req.alias,
+                "+".join(eff.aliases[req.alias]),  # a different model must not be served the old model's answer
                 schema.__name__,
                 schema_version(schema),
                 hashlib.sha256(json.dumps(messages).encode()).hexdigest(),
@@ -127,7 +140,7 @@ class LiteLLMAdapter:
             return schema.model_validate(hit)
 
         self._check_budget(req)
-        text = self._complete(req.alias, messages, meta)
+        text = self._complete(eff, req.alias, messages, meta)
         try:
             out = schema.model_validate_json(extract_json(text))
         except ValidationError as e:
@@ -141,7 +154,7 @@ class LiteLLMAdapter:
                     + "\nReturn only the corrected JSON object.",
                 },
             ]
-            text = self._complete(req.alias, repair, meta | {"step": f"{req.step}:repair"})
+            text = self._complete(eff, req.alias, repair, meta | {"step": f"{req.step}:repair"})
             try:
                 out = schema.model_validate_json(extract_json(text))
             except ValidationError as e2:
@@ -167,27 +180,49 @@ class LiteLLMAdapter:
                 self.publish(BudgetReached(user_id=req.user_id, spent_usd=spent))
             raise BudgetExceeded(f"Daily LLM budget ${user.daily_budget_usd:.2f} reached (${spent:.2f} spent)")
 
-    def _provider(self, alias: str) -> str:
-        models = self.cfg["aliases"][alias]["models"]
-        return str(models[0]).split("/")[0]
+    def _router(self, eff: EffectiveLLM) -> Any:
+        sig = hashlib.sha256(json.dumps([eff.aliases, eff.keys], sort_keys=True).encode()).hexdigest()
+        if sig not in self._routers:
+            if len(self._routers) >= 16:  # settings change rarely; start over rather than grow
+                self._routers.clear()
+            self._routers[sig] = self.router_factory(eff)
+        return self._routers[sig]
 
-    def _complete(self, alias: str, messages: list[dict[str, str]], meta: dict[str, Any]) -> str:
-        provider = self._provider(alias)
+    def _call(self, eff: EffectiveLLM, alias: str, messages: list[dict[str, str]], max_tokens: int) -> Any:
+        provider = provider_of(eff.aliases[alias][0])
+        where = "Open the LLM page (sidebar, under Sign out)"
+        providers = [provider_of(m) for m in eff.aliases[alias]]
+        if all(p in PROVIDERS for p in providers) and not any(eff.keys.get(p) for p in providers):
+            # LiteLLM reports a missing key as a vague connection error, so say it plainly before calling
+            raise PermanentError(f"No {PROVIDERS[providers[0]]} API key is saved yet. {where} and paste one.")
+        try:
+            return self._router(eff).completion(model=alias, messages=messages, max_tokens=max_tokens)
+        except Exception as e:  # the Router already retried and fell back; this is its final answer
+            name, model = provider and PROVIDERS.get(provider, provider), eff.aliases[alias][0]
+            if type(e).__name__ == "AuthenticationError":  # retrying never helps for these three
+                hint = (
+                    " Gemini keys start with AIza (https://aistudio.google.com/apikey)." if provider == "gemini" else ""
+                )
+                raise PermanentError(
+                    f"{name} rejected the API key for '{alias}'. {where}, and check that key.{hint}"
+                ) from e
+            if type(e).__name__ == "PaymentRequiredError":
+                raise PermanentError(
+                    f"{name} wants billing for {model}; its free tier does not include it. {where} and choose a free "
+                    f"model for '{alias}' (for Gemini: gemini/gemini-flash-latest), or turn on billing with {name}."
+                ) from e
+            if type(e).__name__ == "NotFoundError":
+                raise PermanentError(f"{name} has no model called {model}. {where} and pick one from the list.") from e
+            raise TransientError(f"LLM {alias} unavailable: {type(e).__name__}: {redact(str(e)[:200])}") from e
+
+    def _complete(self, eff: EffectiveLLM, alias: str, messages: list[dict[str, str]], meta: dict[str, Any]) -> str:
+        provider = provider_of(eff.aliases[alias][0])
         # shortcut: the bucket is the primary model's provider; a fallback to another provider shares it.
         rl = self.cfg.get("rate_limits", {}).get(provider, {"rate": 1.0, "burst": 5})
         if not self.limiter.acquire(f"llm:{provider}", rl["rate"], rl["burst"], timeout_s=60):
             raise TransientError(f"local rate limit for {provider}")
-        d = self.cfg.get("defaults", {})
         started = time.monotonic()
-        try:
-            resp = self.router.completion(model=alias, messages=messages, max_tokens=d.get("max_tokens", 16000))
-        except Exception as e:  # the Router already retried and fell back; this is its final answer
-            if type(e).__name__ == "AuthenticationError":  # retrying a rejected key never helps
-                raise PermanentError(
-                    f"{provider} rejected the API key for alias '{alias}'. Check GEMINI_API_KEY / MISTRAL_API_KEY "
-                    "in .env. Gemini keys start with AIza (create one at https://aistudio.google.com/apikey)."
-                ) from e
-            raise TransientError(f"LLM {alias} unavailable: {type(e).__name__}: {str(e)[:200]}") from e
+        resp = self._call(eff, alias, messages, self.cfg.get("defaults", {}).get("max_tokens", 16000))
         latency = int((time.monotonic() - started) * 1000)
         usage = getattr(resp, "usage", None)
         tokens = (int(getattr(usage, "prompt_tokens", 0) or 0), int(getattr(usage, "completion_tokens", 0) or 0))
@@ -195,14 +230,14 @@ class LiteLLMAdapter:
         self._record(
             meta,
             model=model,
-            cost=self._cost(resp, model, tokens, alias),
+            cost=self._cost(resp, model, tokens, eff.aliases[alias][0]),
             tokens=tokens,
             latency_ms=latency,
             cache_hit=False,
         )
         return str(resp.choices[0].message.content or "")
 
-    def _cost(self, resp: Any, model: str, tokens: tuple[int, int], alias: str) -> float:
+    def _cost(self, resp: Any, model: str, tokens: tuple[int, int], primary: str) -> float:
         """Configured price for the model; else LiteLLM's price map; else the alias's primary model price.
         "-latest" aliases come back under the resolved model name, so the last fallback keeps the budget honest."""
         prices = self.cfg.get("prices", {})
@@ -213,7 +248,7 @@ class LiteLLMAdapter:
 
                 return float(completion_cost(completion_response=resp))
             except Exception:
-                price = prices.get(self.cfg["aliases"][alias]["models"][0])
+                price = prices.get(primary)
         if not price:
             log.warning("no price for model %s; cost recorded as 0", model)
             return 0.0
@@ -239,11 +274,21 @@ class LiteLLMAdapter:
 class FakeLLM:
     """Test double: returns canned objects per template; records requests."""
 
-    def __init__(self, responses: dict[str, Callable[[LLMRequest], dict[str, Any]] | dict[str, Any]]):
+    def __init__(
+        self,
+        responses: dict[str, Callable[[LLMRequest], dict[str, Any]] | dict[str, Any]],
+        prompts: PromptRepository | None = None,
+    ):
         self.responses = responses
+        self.prompts = prompts  # when given, every request renders its real template, so a missing variable fails
         self.calls: list[LLMRequest] = []
+
+    def check(self, user_id: int, alias: str) -> dict[str, Any]:
+        return {"model": f"fake/{alias}", "ms": 5}
 
     def generate(self, req: LLMRequest, schema: type[T]) -> T:
         self.calls.append(req)
+        if self.prompts:
+            self.prompts.render(req.template, req.variables)
         r = self.responses[req.template]
         return schema.model_validate(r(req) if callable(r) else r)

@@ -1,11 +1,11 @@
 # YTStudio (YT Autopilot)
 
-A self-hosted research and content-prep assistant for your YouTube channels. Every day, for each channel, it:
+A self-hosted research and scripting assistant for your YouTube channels. Each channel is its own world: its own ideas, scripts, analysis, trends, voice, schedule and job history. Every day, for each channel, it:
 
 1. syncs your uploads and reads your last 90 days against your own median,
 2. finds outlier videos in your niche (views ÷ that channel's own median),
 3. writes 5 ranked ideas, then for the top one a scored hook, a full script, 3 linted title + thumbnail pairs, and SEO,
-4. cuts Shorts from your master render (captions or Whisper, 9:16, karaoke captions, −14 LUFS), with covers and titles.
+Nothing is recorded, rendered or generated as video or audio: you make the video. You can also type your own idea and have it turned into a script, and the Publish page fills in the title, description and tags for you and can schedule the upload.
 
 **Nothing is ever published.** Everything lands in a review queue as "needs review". You record, edit, design and upload yourself. Numbers shown are real numbers from the APIs; nothing predicts views.
 
@@ -15,11 +15,11 @@ Everything runs with Docker Compose: website, workers, scheduler, Postgres, Redi
 
 1. Install and open Docker Desktop.
 2. Put `YTStudioCred.json` (Google OAuth client, see below) in this folder.
-3. `cp .env.example .env` and fill in: `TOKEN_ENCRYPTION_KEY`, `ALLOWED_EMAILS` (your Gmail), `GEMINI_API_KEY`, `MISTRAL_API_KEY`, and the passwords (`POSTGRES_PASSWORD`, `REDIS_PASSWORD`, `FLOWER_PASSWORD`; letters and digits only).
+3. `cp .env.example .env` and fill in: `TOKEN_ENCRYPTION_KEY`, `ALLOWED_EMAILS` (your Gmail), and the passwords (`POSTGRES_PASSWORD`, `REDIS_PASSWORD`, `FLOWER_PASSWORD`; letters and digits only).
 4. Start everything:
 
 ```bash
-docker compose up -d --build     # first time builds images (several minutes; the Whisper image is large)
+docker compose up -d --build     # first time builds the image (a few minutes)
 docker compose ps                # all services "healthy" / "running"
 docker compose logs -f api       # follow a service's log
 docker compose down              # stop (data stays in Docker volumes)
@@ -27,11 +27,11 @@ docker compose down              # stop (data stays in Docker volumes)
 
 5. Open <http://localhost:8000>; it sends you to Google sign-in (only a Gmail in `ALLOWED_EMAILS` gets in). Then add your channel (Google asks for YouTube access), confirm Settings, then press **Run today's brief now** on Today.
 
-Services: `web` (Caddy, the only published port, 8000), `api` (runs migrations on start), `worker-io`, `worker-llm`, `worker-media`, `beat`, `flower` (<http://127.0.0.1:5555>, password), `postgres`, `redis` (password, not published). Master files and Shorts live on the `media` volume.
+Services: `web` (Caddy, the only published port, 8000), `api` (runs migrations on start), `worker-io`, `worker-llm`, `beat`, `flower` (<http://127.0.0.1:5555>, password), `postgres`, `redis` (password, not published). 
 
 ## Using it from another device
 
-Your history (briefs, ideas, scripts, Shorts, runs) is stored on the server under your Gmail, so signing in with the same Gmail on any device shows the same data. The only requirement is that the device can open the site and that Google accepts the redirect address:
+Your history (briefs, ideas, scripts, runs) is stored on the server under your Gmail, so signing in with the same Gmail on any device shows the same data. The only requirement is that the device can open the site and that Google accepts the redirect address:
 
 - `http://localhost:8000` works only on this computer.
 - Google refuses plain `http://` for any other address (for example `http://192.168.1.5:8000`). For a phone or another computer you need an `https://` address, such as a domain on a server (`SITE_ADDRESS=your.domain`, `BASE_URL=https://your.domain`, ports 80 and 443 open), or a tunnel to this computer (Tailscale or Cloudflare Tunnel).
@@ -48,19 +48,20 @@ Docker starts with a fresh Postgres; the old `ytstudio.db` is not needed. Add yo
 3. **OAuth consent screen** → External → add every Gmail you will use under **Test users**.
 4. **Credentials → Create credentials → OAuth client ID → Web application.** Authorized redirect URI: `{BASE_URL}/oauth2callback` (for example `http://localhost:8000/oauth2callback`).
 5. **Download JSON** and save it as `YTStudioCred.json` next to `main.py`. That file is the only place the client id and secret are read from (it is in `.gitignore`; never commit it).
-6. Optional: **Create credentials → API key**, restricted to YouTube Data API v3, as `GOOGLE_API_KEY`. Public reads (trends, other channels' stats) then don't use your channel logins.
 
-Scopes requested when you add a channel: YouTube read-only, YouTube Analytics read-only, `youtube.force-ssl` (captions of your own videos; also lets the optional Publish page upload when you press its button), and Analytics monetary read-only (revenue). Channels connected before this version have the old full `youtube` scope; reconnect them once to move to the new scopes.
+Scopes requested when you add a channel: YouTube read-only, YouTube Analytics read-only, `youtube.force-ssl` (lets the optional Publish page upload when you press its button), and Analytics monetary read-only (revenue). Channels connected before this version have the old full `youtube` scope; reconnect them once to move to the new scopes.
 
 Quota: 10,000 units/day per project. Search costs 100, list calls 1. A daily run for one channel uses roughly 20 to 450 units depending on how many niche searches it makes (capped by `SEARCHES_PER_CHANNEL_PER_DAY`; searches are cached 6 hours).
 
 ## LLM keys
 
-Aliases live in `config/llm.toml`: `fast` (classification, niche detection), `smart` (ideas, scripts, packages), `long` (transcripts). Each has a primary model and fallbacks. The models are Google Gemini (primary) and Mistral (fallback), so set `GEMINI_API_KEY` ([AI Studio](https://aistudio.google.com/apikey)) and `MISTRAL_API_KEY` ([Mistral console](https://console.mistral.ai/api-keys)). Prices for cost tracking are in the same file; check them against the providers' pricing pages now and then. To change models, edit the lists ([LiteLLM provider names](https://docs.litellm.ai/docs/providers)) and set their keys. `LITELLM_PROXY_URL` routes everything through a LiteLLM proxy. Each user has a daily budget (Settings); at the budget, non-critical steps stop (shown on the Jobs page).
+**The LLM page** (link at the bottom of the sidebar, under Sign out) is where you paste your API keys and choose the models. There are no AI keys in `.env`. Keys are saved encrypted and never shown again. For each of the three aliases (fast, smart, long) you pick a main model and up to two fallbacks, from a list that "Refresh model lists" loads from your providers, or by typing `provider/model`. "Test fast / smart / long" sends a tiny real request, so a wrong key shows up right away. Each logged-in account has its own models and keys. Models you leave empty use the defaults below.
+
+Aliases live in `config/llm.toml` as defaults: `fast` (classification, niche detection), `smart` (ideas, scripts, packages), `long` (long inputs), each with a primary model and fallbacks (Google Gemini first, Mistral as fallback). Choose your own on the LLM page. Prices for cost tracking are in the same file; check them against the providers' pricing pages now and then. Each user has a daily budget (Settings); at the budget, non-critical steps stop (shown on the Jobs page).
 
 ## Pages
 
-Today (the brief) · Ideas · Shorts (master upload, review, trim, download) · Insights (analytics, retention charts) · Trends · Publish (optional, manual) · Jobs (runs, retries, dead letters, LLM cost, quota, health) · Settings (schedule, language, topics, voice.md, budget, sync, read-only LLM aliases and flags).
+Today (the daily brief: analysis, trends, 5 ideas, a script) · Scripts (every script, daily and requested) · Ideas (backlog, plus a form for your own idea) · Insights (analytics, retention charts) · Trends · Publish (manual upload; fills title, description and tags from a script and can schedule it) · Jobs (runs, retries, dead letters, LLM cost, quota, health for the selected channel) · Settings (per channel: schedule, language, region, topics, voice; plus budget, sync, read-only LLM aliases).
 
 ## Development
 

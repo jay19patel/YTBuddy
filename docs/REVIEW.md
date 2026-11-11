@@ -274,3 +274,9 @@ Your instruction was "do all things", so the open questions were settled with th
 - **LLM:** Gemini (`gemini-pro-latest` / `gemini-flash-latest`) with Mistral (`mistral-large-latest` / `mistral-small-latest`) as fallback. Prices in `config/llm.toml` are conservative estimates from third-party sources and need checking against the official pricing pages.
 - **Notifications:** removed entirely (in-app, email, Telegram; migration `0004`). Events are logged. Job failures show on the Jobs page; reconnect-needed shows a banner; a stale Beat shows in `/health` and the Jobs page.
 - **Sign-in:** Google sign-in restored at your request, strict allowlist (`ALLOWED_EMAILS`; empty = nobody, no first-user exception). Server-side session, httpOnly cookie, CSRF and owner scoping are unchanged. A PIN was tried and removed. History is per Gmail, so any device that signs in with it sees the same data.
+
+### Scope change (2026-11-11, later): scripts and analysis only
+
+- **Removed** video and audio generation (Shorts pipeline, FFmpeg, Whisper, master upload, covers, chapters/edit lists) because the plan is to make the videos by hand. Tag `shorts-pipeline-v1` has the old code. The "Shorts pipeline", media-worker and FFmpeg items earlier in this file describe code that no longer exists.
+- **Added** your-own-idea form, a Scripts page, and an auto-filled, schedulable Publish page. Upload stays manual: nothing is uploaded unless you press the button. A scheduled upload is private until YouTube publishes it at your chosen time.
+- **Per channel:** voice, jobs and asset links now follow the selected channel (tests in `tests/test_channels.py`).

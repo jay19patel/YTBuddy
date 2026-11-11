@@ -110,7 +110,7 @@ class VendorEditDecisionList(VendorTools):
 
 
 class VendorRetentionAnalyzer(VendorTools):
-    def analyze(self, points: list[RetentionPoint], duration_s: float, cues: list[Cue] | None) -> dict[str, Any]:
+    def analyze(self, points: list[RetentionPoint], duration_s: float, cues: list[Cue] | None = None) -> dict[str, Any]:
         if len(points) < 8:
             return {"available": False, "reason": "YouTube returned fewer than 8 retention points for this video"}
         with tempfile.TemporaryDirectory() as d:

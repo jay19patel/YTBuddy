@@ -4,6 +4,32 @@
 {% block content %}
 <header><h1>Settings</h1></header>
 
+{% if channel %}
+<form class="panel settings" method="post" action="/settings/generate">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <h2>Describe your channel, the AI does the rest</h2>
+  <div class="row"><label class="field" for="g-brief">Your channel in simple words</label>
+    <textarea id="g-brief" name="brief" rows="5" maxlength="3000" required placeholder="For example: I make Python and AI project videos for beginners in Hindi. I show full projects step by step, no theory. My viewers are college students.">{{ brief }}</textarea>
+    <p class="hint">Hindi, English or Hinglish. The AI reads your words and your real uploads, then writes the channel description, keywords, niche, language, region, search topics, and a voice profile with a short analysis. It only fills the boxes below. Nothing is saved until you press a save button.</p></div>
+  <button class="btn quiet" type="submit" data-busy="Generating, this can take a minute…">Generate with AI</button>
+</form>
+
+<form class="panel settings" method="post" action="/settings/about">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <div class="section-head"><h2>About {{ channel.title }}</h2><span class="muted">Synced with YouTube</span></div>
+  <div class="row"><label class="field" for="a-desc">Description</label>
+    <textarea id="a-desc" name="description" rows="8" maxlength="1000">{{ channel.about }}</textarea>
+    <p class="hint">Saving updates your YouTube channel right away. Changes made in YouTube Studio come back here with the next channel stats sync. The daily ideas use this text.</p></div>
+  <div class="row"><label class="field" for="a-kw">Channel keywords</label>
+    <input type="text" id="a-kw" name="keywords" maxlength="500" value="{{ channel.keywords }}" placeholder='python fastapi "ai apps"'>
+    <p class="hint">Separate with spaces; put quotes around a keyword with more than one word.</p></div>
+  <div class="actions">
+    <button class="btn quiet" type="submit">Save to YouTube</button>
+  </div>
+</form>
+<div class="actions">{{ m.post("/settings/run/sync_stats", "Pull from YouTube now", "copy") }}</div>
+{% endif %}
+
 {% if current and schedule %}
 <form class="panel settings" method="post" action="/settings/schedule">
   <input type="hidden" name="csrf" value="{{ csrf }}">
@@ -33,7 +59,7 @@
     <div><label class="switch"><input type="checkbox" name="shorts_enabled" value="true" {% if schedule.shorts_enabled %}checked{% endif %}> Make Shorts automatically when a linked upload goes live</label></div>
   </div>
   <div class="row"><label class="field" for="s-voice">voice.md for {{ current.title }}</label>
-    <textarea id="s-voice" name="voice_md" rows="8" placeholder="Who you talk to, how you talk, words you never use, what you will not claim.">{{ schedule.voice_md }}</textarea>
+    <textarea id="s-voice" name="voice_md" rows="16" placeholder="Who you talk to, how you talk, words you never use, what you will not claim.">{{ schedule.voice_md }}</textarea>
     <p class="hint">Used in every script, package and SEO prompt for this channel only. Each channel has its own voice.</p></div>
   <button class="btn quiet" type="submit">Save and confirm</button>
 </form>
@@ -47,7 +73,7 @@
   <input type="hidden" name="csrf" value="{{ csrf }}">
   <h2>Daily LLM budget <span class="muted">(all your channels together)</span></h2>
   <div class="row"><label class="field" for="s-budget">Daily LLM budget (USD, 0 = no limit)</label><input type="number" id="s-budget" name="daily_budget_usd" min="0" step="0.5" value="{{ user.daily_budget_usd }}">
-    <p class="hint">Leave 0 on free API keys. With a paid key: at the budget, non-critical steps (analysis, package, SEO, Shorts titles) stop (shown on the Jobs page). Ideas and scripts still run.</p></div>
+    <p class="hint">Leave 0 on free API keys. With a paid key: at the budget, non-critical steps (analysis, package, SEO) stop (shown on the Jobs page). Ideas and scripts still run.</p></div>
   <button class="btn quiet" type="submit">Save</button>
 </form>
 
@@ -85,16 +111,7 @@
 </section>
 
 <section class="panel">
-  <h2>LLM aliases <span class="muted">(read-only, config/llm.toml)</span></h2>
-  {% if proxy %}<p class="muted">All aliases go through the LiteLLM proxy (LITELLM_PROXY_URL).</p>{% endif %}
-  <dl class="kv">{% for alias, spec in llm.items() %}<dt>{{ alias }}</dt><dd>{{ spec.models | join(" → ") }}</dd>{% endfor %}</dl>
-</section>
-<section class="panel">
-  <h2>Feature flags <span class="muted">(read-only, .env)</span></h2>
-  <dl class="kv">
-    <dt>Manual publish page</dt><dd>{{ "on" if flags.publish else "off" }} <span class="muted">ENABLE_MANUAL_PUBLISH; uploads only when you press the button</span></dd>
-    <dt>yt-dlp for own videos</dt><dd>{{ "on" if flags.ytdlp else "off" }} <span class="muted">ENABLE_YTDLP; check YouTube's Terms of Service first</span></dd>
-    <dt>Automatic publishing</dt><dd>{{ "on" if flags.auto_publish else "off" }} <span class="muted">not implemented; everything goes to review</span></dd>
-  </dl>
+  <h2>AI models and keys</h2>
+  <p class="muted">They have their own page now: open <a href="/llm">LLM</a> at the bottom of the sidebar, under Sign out.</p>
 </section>
 {% endblock %}

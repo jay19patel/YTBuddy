@@ -28,6 +28,8 @@ def channel_vars(ctx: Context) -> dict[str, Any]:
         "region": s.region,
         "target_minutes": s.target_minutes,
         "voice": ctx.schedule.voice_md.strip(),
+        "about": ctx.channel.about.strip(),
+        "keywords": ctx.channel.keywords,
     }
 
 

@@ -1,6 +1,6 @@
 # Architecture
 
-Ports and adapters. Business rules never import Google, LiteLLM, FFmpeg, Pillow, Celery, Redis, the ORM or FastAPI.
+Ports and adapters. Business rules never import Google, LiteLLM, Celery, Redis, the ORM or FastAPI.
 
 ```
 interfaces/   web (FastAPI routers + Jinja)        worker.py (Celery app + thin tasks)
@@ -8,15 +8,15 @@ interfaces/   web (FastAPI routers + Jinja)        worker.py (Celery app + thin 
     ▼                     ▼                                   ▼
 container.py   ── the only place that picks concrete adapters ──────────────
     │
-application/  use_cases.py   pipeline.py (engine + registry)   steps_daily.py   steps_shorts.py   schemas.py
+application/  use_cases.py   pipeline.py (engine + registry)   steps_daily.py   schemas.py
     │  depends only on ↓
-ports.py      Protocols: VideoSource, Analytics, TrendProvider, LLM, PromptRepository, Transcriber,
-              MediaProcessor, ImageRenderer, Storage, TokenVault, Cache, DistributedLock, RateLimiter,
+ports.py      Protocols: VideoSource, Analytics, TrendProvider, LLM, PromptRepository,
+              TokenVault, Cache, DistributedLock, RateLimiter,
               QuotaBudget, Notifier, TaskDispatcher, scorers, repositories + UnitOfWork
 domain/       models.py  errors.py  events.py  schedule.py (DST)  metrics.py     (pure, no I/O)
     ▲
 adapters/     youtube.py (facade: OAuth + Data + Analytics + quota + error mapping)   trends.py
-              llm.py (LiteLLM Router)   prompts.py   vendor_skills.py   media.py (FFmpeg, Pillow, whisper)
+              llm.py (LiteLLM Router)   prompts.py   vendor_skills.py
               storage.py (local disk)   notify.py   redis_kv.py   token_vault.py   celery_dispatcher.py
               persistence/ (tables, repos + unit of work, read-model queries, web sessions)
 ```
@@ -50,12 +50,12 @@ DB 0 is the Celery broker and DB 1 the Celery results. DB 2 is the app's (`REDIS
 
 ## Patterns, and why they are here
 
-- **Strategy:** trend providers, transcriber, LLM model choice (aliases). Storage is one local-disk adapter behind a port, so another backend could be added later without touching use cases.
+- **Strategy:** trend providers, LLM model choice (aliases).
 - **Registry + Template Method:** pipeline steps.
 - **Repository + Unit of Work:** persistence.
 - **Adapter:** Google, LiteLLM, Celery, the vendored tools.
 - **Facade:** `YouTubeGateway` over the Data and Analytics APIs.
-- **Domain events:** `BriefReady`, `ShortsReady`, `JobFailed`, `ChannelNeedsReconnect`, `BudgetReached` and `BeatStale` are written to the log by `LogNotifier` (no in-app, email or Telegram messages). Failures are visible on the Jobs page; a channel needing reconnection shows a banner.
+- **Domain events:** `BriefReady`, `JobFailed`, `ChannelNeedsReconnect`, `BudgetReached` and `BeatStale` are written to the log by `LogNotifier` (no in-app, email or Telegram messages). Failures are visible on the Jobs page; a channel needing reconnection shows a banner.
 
 ## Guide: add a trend provider
 
@@ -85,7 +85,7 @@ Then add `"summarise_comments"` to a pipeline in `config/pipelines.toml`, add `p
 
 ## Guide: add an LLM provider or model
 
-1. Put the key in `.env` (LiteLLM reads `GEMINI_API_KEY`, `MISTRAL_API_KEY`, `OPENAI_API_KEY`, and so on).
+1. Paste the key on the LLM page (sidebar, under Sign out). Keys are stored encrypted in the database, never in `.env`. A new provider needs one line in `PROVIDERS` in `ytstudio/domain/llm.py` and a branch in `ytstudio/adapters/llm_models.py`.
 2. In `config/llm.toml`, add the model to an alias's `models` list (`"provider/model"`), in fallback order. Add a `[prices."provider/model"]` entry if LiteLLM's price map lacks it, and a `[rate_limits.provider]` bucket.
 3. Restart the workers. No code changes: code only names the aliases `fast`, `smart` and `long`.
 4. To add a new alias, add `[aliases.new]` and use it in a step's `self.ask(ctx, "new", ...)`.
@@ -96,4 +96,4 @@ Then add `"summarise_comments"` to a pipeline in `config/pipelines.toml`, add `p
 
 ## Vendored tools
 
-`vendor/youtube-agent-skill` is MIT and never modified; its commit is recorded in `VENDORED_COMMIT`. `hookscore.py` and `title.py` are imported directly. `swipe.py`, `chapters.py`, `deadair.py` and `retention.py` run as `python -I` subprocesses with `--json`. Their output appears in the UI as a "hook panel score", lint score and similar, always labelled as heuristics.
+`vendor/youtube-agent-skill` is MIT and never modified; its commit is recorded in `VENDORED_COMMIT`. `hookscore.py` and `title.py` are imported directly. `swipe.py` and `retention.py` run as `python -I` subprocesses with `--json`. Their output appears in the UI as a "hook panel score", lint score and similar, always labelled as heuristics.

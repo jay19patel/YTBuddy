@@ -10,7 +10,7 @@ import re
 import threading
 from collections.abc import Callable, Iterator
 from datetime import UTC, date, datetime, timedelta
-from typing import Any, TypeVar
+from typing import Any
 
 import httplib2
 import httpx
@@ -35,7 +35,6 @@ from ytstudio.logging_setup import redact
 from ytstudio.ports import Cache, ChannelInfo, Clock, OAuthResult, OAuthStart, QuotaBudget, TokenVault
 
 log = logging.getLogger(__name__)
-T_ = TypeVar("T_")
 
 TOKEN_URI = "https://oauth2.googleapis.com/token"  # noqa: S105  (a URL, not a secret)
 READONLY = "https://www.googleapis.com/auth/youtube.readonly"
@@ -51,6 +50,7 @@ COST = {
     "list": 1,
     "captions.list": 50,
     "captions.download": 200,
+    "channels.update": 50,
     "videos.insert": 1600,
     "live.insert": 50,
     "live.bind": 50,
@@ -108,8 +108,6 @@ def friendly_error(exc: Exception) -> str:
         return "Daily YouTube API quota used up. It resets at midnight Pacific time. Sync less often in Settings."
     if isinstance(exc, ReconnectNeeded) or "invalid_grant" in text:
         return "Google access for this channel expired or was revoked. Reconnect the channel."
-    if "API keys are not supported" in text or "API key not valid" in text:
-        return "GOOGLE_API_KEY is not a valid YouTube Data API key. Remove it from .env or create one for that API."
     return text[:500]
 
 
@@ -180,10 +178,9 @@ class YouTubeGateway:
         cache: Cache,
         clock: Clock,
         on_reconnect: Callable[[str], None],
-        api_key: str = "",
     ):
         self.vault, self.client_id, self.client_secret = vault, client_id, client_secret
-        self.quota, self.cache, self.clock, self.on_reconnect, self.api_key = quota, cache, clock, on_reconnect, api_key
+        self.quota, self.cache, self.clock, self.on_reconnect = quota, cache, clock, on_reconnect
         self._locks: dict[str, threading.Lock] = {}
         self._guard = threading.Lock()
 
@@ -233,10 +230,8 @@ class YouTubeGateway:
         )
 
     def service(self, name: str, version: str, channel_id: str | None) -> Any:
-        if channel_id is None:
-            if not self.api_key:
-                raise PermanentError("No channel credentials or GOOGLE_API_KEY available for a public API call")
-            return build(name, version, developerKey=self.api_key, cache_discovery=False)
+        if channel_id is None:  # every call, public data included, goes through a connected channel's login
+            raise PermanentError("Connect a YouTube channel first.")
         return build(name, version, credentials=self.creds(channel_id), cache_discovery=False)
 
     def execute(self, request: Any, cost: int, critical: bool = True) -> Any:
@@ -255,41 +250,26 @@ class YouTubeGateway:
         except (OSError, TimeoutError, httplib2.HttpLib2Error, TransportError) as e:
             raise TransientError(f"network: {e}") from e
 
-    def _public(self, using: str | None) -> str | None:
-        return None if self.api_key else using
-
-    def _public_call(self, using: str | None, call: Callable[[str | None], T_]) -> T_:
-        """Public reads go through GOOGLE_API_KEY when set. If Google rejects the key (wrong type, restricted,
-        deleted), stop using it for this process and fall back to the channel's own login."""
-        if self.api_key:
-            try:
-                return call(None)
-            except PermanentError:
-                if using is None:
-                    raise
-                log.warning(
-                    "GOOGLE_API_KEY was rejected by the YouTube Data API; using channel logins instead. "
-                    "Remove or fix GOOGLE_API_KEY in .env."
-                )
-                self.api_key = ""
-        return call(using)
-
     # ----- OAuth-time -----
 
     def my_channel(self, token: OAuthToken) -> ChannelInfo | None:
         yt = build("youtube", "v3", credentials=self._to_creds(token), cache_discovery=False)
-        items = self.execute(yt.channels().list(part="snippet,contentDetails,statistics", mine=True), COST["list"])
+        items = self.execute(
+            yt.channels().list(part="snippet,contentDetails,statistics,brandingSettings", mine=True), COST["list"]
+        )
         return self._info(items["items"][0]) if items.get("items") else None
 
     @staticmethod
     def _info(i: dict[str, Any]) -> ChannelInfo:
         sn, st = i.get("snippet", {}), i.get("statistics", {})
+        brand = i.get("brandingSettings", {}).get("channel", {})
         return ChannelInfo(
             id=i["id"],
             title=sn.get("title", ""),
             thumb=sn.get("thumbnails", {}).get("default", {}).get("url", ""),
             uploads_playlist=i.get("contentDetails", {}).get("relatedPlaylists", {}).get("uploads", ""),
-            description=sn.get("description", ""),
+            description=brand.get("description", sn.get("description", "")),
+            keywords=brand.get("keywords", ""),
             country=sn.get("country", ""),
             default_language=sn.get("defaultLanguage", ""),
             subscribers=int(st.get("subscriberCount", 0)),
@@ -300,18 +280,29 @@ class YouTubeGateway:
     # ----- Data API -----
 
     def channel_infos(self, channel_ids: list[str], using: str | None) -> dict[str, ChannelInfo]:
-        def call(src: str | None) -> dict[str, ChannelInfo]:
-            yt = self.service("youtube", "v3", src)
-            out: dict[str, ChannelInfo] = {}
-            for batch in chunks(channel_ids):
-                resp = self.execute(
-                    yt.channels().list(part="snippet,statistics,contentDetails", id=",".join(batch), maxResults=50),
-                    COST["list"],
-                )
-                out |= {i["id"]: self._info(i) for i in resp.get("items", [])}
-            return out
+        yt = self.service("youtube", "v3", using)
+        out: dict[str, ChannelInfo] = {}
+        for batch in chunks(channel_ids):
+            resp = self.execute(
+                yt.channels().list(
+                    part="snippet,statistics,contentDetails,brandingSettings", id=",".join(batch), maxResults=50
+                ),
+                COST["list"],
+            )
+            out |= {i["id"]: self._info(i) for i in resp.get("items", [])}
+        return out
 
-        return self._public_call(using, call)
+    def update_about(self, channel_id: str, description: str, keywords: str) -> None:
+        """channels.update replaces the whole brandingSettings part, so merge into the current one or the
+        fields we don't send (trailer, default language, country) would be wiped."""
+        yt = self.service("youtube", "v3", channel_id)
+        cur = self.execute(yt.channels().list(part="brandingSettings", id=channel_id), COST["list"])
+        branding = (cur.get("items") or [{}])[0].get("brandingSettings", {})
+        branding.setdefault("channel", {}).update(description=description, keywords=keywords)
+        self.execute(
+            yt.channels().update(part="brandingSettings", body={"id": channel_id, "brandingSettings": branding}),
+            COST["channels.update"],
+        )
 
     def _video(self, i: dict[str, Any]) -> Video:
         sn, st = i["snippet"], i.get("statistics", {})
@@ -379,9 +370,8 @@ class YouTubeGateway:
                 missing.append(cid)
         if not missing:
             return out
-        infos = self.channel_infos(missing, using)  # may switch off a rejected API key first
-        src = self._public(using)
-        yt = self.service("youtube", "v3", src)
+        infos = self.channel_infos(missing, using)
+        yt = self.service("youtube", "v3", using)
         for cid, info in infos.items():
             if not info.uploads_playlist:
                 continue
@@ -391,7 +381,7 @@ class YouTubeGateway:
                 critical=False,
             )
             vids = [it["contentDetails"]["videoId"] for it in resp.get("items", [])]
-            views = [v.views for v in self.videos(vids, src, critical=False)] if vids else []
+            views = [v.views for v in self.videos(vids, using, critical=False)] if vids else []
             self.cache.set(f"recent:{cid}", views, STATS_TTL)
             out[cid] = views
         return out
@@ -404,28 +394,24 @@ class YouTubeGateway:
         if (hit := self.cache.get(key)) is not None:
             ids = hit
         else:
-
-            def call(src: str | None) -> Any:
-                yt = self.service("youtube", "v3", src)
-                return self.execute(
-                    yt.search().list(
-                        part="id",
-                        q=query,
-                        type="video",
-                        order="viewCount",
-                        publishedAfter=after,
-                        regionCode=region,
-                        relevanceLanguage=language,
-                        maxResults=max_results,
-                    ),
-                    COST["search"],
-                    critical=False,
-                )
-
-            resp = self._public_call(using, call)
+            yt = self.service("youtube", "v3", using)
+            resp = self.execute(
+                yt.search().list(
+                    part="id",
+                    q=query,
+                    type="video",
+                    order="viewCount",
+                    publishedAfter=after,
+                    regionCode=region,
+                    relevanceLanguage=language,
+                    maxResults=max_results,
+                ),
+                COST["search"],
+                critical=False,
+            )
             ids = [i["id"]["videoId"] for i in resp.get("items", [])]
             self.cache.set(key, ids, SEARCH_TTL)
-        return self.videos(ids, self._public(using), critical=False) if ids else []
+        return self.videos(ids, using, critical=False) if ids else []
 
     def most_popular(self, region: str, category_id: str | None, using: str | None) -> list[Video]:
         key = f"popular:{region}:{category_id}"
@@ -439,9 +425,7 @@ class YouTubeGateway:
         }
         if category_id:
             kw["videoCategoryId"] = category_id
-        resp = self._public_call(
-            using, lambda src: self.execute(self.service("youtube", "v3", src).videos().list(**kw), COST["list"], False)
-        )
+        resp = self.execute(self.service("youtube", "v3", using).videos().list(**kw), COST["list"], False)
         vids = [self._video(i) for i in resp.get("items", [])]
         self.cache.set(key, [v.__dict__ | {"published_at": v.published_at.isoformat()} for v in vids], SEARCH_TTL)
         return vids

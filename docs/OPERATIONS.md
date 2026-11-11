@@ -7,18 +7,16 @@
 | api | `uvicorn main:app` (runs `ytstudio.cli migrate` first in Docker) | stateless; scale freely, but run migrations once |
 | worker-io | `celery … worker -Q io -c 6` | YouTube API; concurrency 4 to 8 |
 | worker-llm | `celery … worker -Q llm -c 3` | concurrency 2 to 4; bounded by provider rate limits (`config/llm.toml`) |
-| worker-media | `celery … worker -Q media -c 1 --prefetch-multiplier 1` | FFmpeg and Whisper; image built with `--extra media` |
 | beat | `celery … beat` | **exactly one**. It only sends ticks; schedules live in the `schedule` table |
 | flower | `celery … flower --basic-auth=…` | bound to 127.0.0.1; reach it over `ssh -L 5555:localhost:5555` |
 
-**Time limits (soft/hard, seconds):** io 300/360, llm 600/720, media 3600/3900. The Redis visibility timeout is 3 h, longer than the longest task. Change the limits with `QUEUE_LIMITS` in config.
+**Time limits (soft/hard, seconds):** io 300/360, llm 600/720. The Redis visibility timeout is 1 h, longer than the longest task. Change the limits with `QUEUE_LIMITS` in config.
 
-**Shutdown:** `docker compose stop` sends SIGTERM. Workers finish their current task (warm shutdown, 2-minute grace period). Because of `acks_late` and `reject_on_worker_lost`, a killed task is redelivered, and steps skip work they already saved. Media output is written to a temp file and renamed into storage, so a half-written file is never visible.
+**Shutdown:** `docker compose stop` sends SIGTERM. Workers finish their current task (warm shutdown, 2-minute grace period). Because of `acks_late` and `reject_on_worker_lost`, a killed task is redelivered, and steps skip work they already saved.
 
 ## Scaling workers
 
 - More channels means more `worker-io` replicas (`docker compose up -d --scale worker-io=2`). The YouTube quota, not CPU, is usually the limit.
-- Renders queue up: add `worker-media` replicas on machines with CPU to spare. Keep concurrency at 1 per container and prefetch at 1.
 - LLM 429s mean the provider is the limit, not workers. Lower `rate_limits` in `config/llm.toml` or add a fallback model.
 
 ## Health and alerts
@@ -50,7 +48,7 @@ If a key is lost, the tokens can't be decrypted. Affected channels show "reconne
 
 ## Backups
 
-Back up Postgres (`pg_dump`), the `media` volume or `media/` folder (master files, rendered Shorts, covers), and `YTStudioCred.json`. Redis holds only caches, locks and counters; losing it is safe, though in-flight tasks are redelivered or need a retry.
+Back up Postgres (`pg_dump`), and `YTStudioCred.json`. Redis holds only caches, locks and counters; losing it is safe, though in-flight tasks are redelivered or need a retry.
 
 ## Upgrading
 

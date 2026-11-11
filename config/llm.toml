@@ -1,9 +1,9 @@
 # LLM aliases. Code only ever names an alias; real model names live here.
 # Each alias: primary model first, then ordered fallbacks. Providers: Google Gemini and Mistral.
-# Keys come from the environment: GEMINI_API_KEY (Google AI Studio) and MISTRAL_API_KEY (La Plateforme).
+# These are only the defaults. Pick models and paste API keys on the LLM page (sidebar, under Sign out):
+# globally (the owner) or for your own account. Keys are never read from .env.
 # Model strings use LiteLLM's "provider/model" form: https://docs.litellm.ai/docs/providers
 # The "-latest" names follow each provider's newest release, so these never go stale.
-# Set LITELLM_PROXY_URL to send every alias through a LiteLLM proxy instead.
 
 [defaults]
 max_tokens = 16000

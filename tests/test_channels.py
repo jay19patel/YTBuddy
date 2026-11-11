@@ -63,7 +63,7 @@ def test_asset_link_opens_under_its_own_channel(container, two, db_url):
     assert r.status_code == 200 and "Channel: My Channel" in r.text and "channel=UCme" in r.headers["set-cookie"]
     # switching channel on a detail page goes to the list page, not back to the other channel's asset
     back = client.get("/use/UCtwo", headers={"referer": f"http://testserver/assets/{asset_id}"}, follow_redirects=False)
-    assert back.headers["location"] == "/today"
+    assert back.headers["location"] == "/insights"
 
 
 def test_saving_settings_changes_only_the_selected_channel(container, two, db_url):

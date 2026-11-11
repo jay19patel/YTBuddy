@@ -261,8 +261,6 @@ pre.copyable { white-space: pre-wrap; background: var(--code); padding: 12px; bo
 .retention { width: 100%; height: 200px; display: block; }
 .retention polyline { fill: none; stroke: var(--ink); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
 .retention line { stroke: var(--line); vector-effect: non-scaling-stroke; }
-.shorts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 18px; }
-.shorts-grid video { width: 100%; aspect-ratio: 9 / 16; background: #000; border-radius: var(--r-sm); }
 .row-inline { display: flex; gap: 8px; align-items: end; flex-wrap: wrap; }
 .row-inline input { width: 110px; }
 .login { max-width: 420px; margin: 12vh auto; text-align: center; }
@@ -276,3 +274,12 @@ body.bare { display: block; }
 .rail-btn:hover { border-color: #fff; color: #fff; }
 .chan { display: flex; align-items: center; gap: 8px; margin: 0 0 14px; font-weight: 600; color: var(--muted); font-size: 14px; }
 .chan img { width: 24px; height: 24px; border-radius: 50%; }
+
+.tabs { display: flex; gap: 4px; flex-wrap: wrap; margin: 0 0 22px; border-bottom: 1px solid var(--line, #d9dde2); }
+.tabs a { padding: 8px 14px; color: var(--muted); text-decoration: none; font-weight: 600; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.tabs a:hover { color: inherit; }
+.tabs a[aria-current] { color: inherit; border-bottom-color: var(--signal); }
+.models { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px; }
+.job-row .models, .models-row .models { grid-column: 1 / -1; }
+.rail-link { display: block; margin-top: 10px; font-size: 13px; color: #c3c9cf; text-decoration: none; }
+.rail-link:hover, .rail-link[aria-current] { color: #fff; text-decoration: underline; }

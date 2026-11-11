@@ -29,6 +29,10 @@ log = logging.getLogger(__name__)
 
 MESSAGES = {
     "saved": "Settings saved.",
+    "deleted": "Deleted.",
+    "ai_saved": "AI settings saved. Use the Test buttons to check that they work.",
+    "about_saved": "About updated on YouTube.",
+    "idea_added": "Idea added. Develop it into a script when you are ready.",
     "started": "Started. Progress shows below.",
     "regenerating": "Regenerating. Reload in a minute.",
     "approved": "Approved.",
@@ -249,8 +253,8 @@ def create_app() -> FastAPI:
             status_code=500,
         )
 
-    from ytstudio.interfaces.web import routes_auth, routes_media, routes_ops, routes_pages
+    from ytstudio.interfaces.web import routes_auth, routes_llm, routes_media, routes_ops, routes_pages
 
-    for r in (routes_auth, routes_pages, routes_media, routes_ops):
+    for r in (routes_auth, routes_pages, routes_media, routes_llm, routes_ops):
         app.include_router(r.router)
     return app

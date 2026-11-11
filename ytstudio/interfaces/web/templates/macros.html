@@ -11,16 +11,30 @@
   <span class="tag {{ a.status }}">{{ a.status | replace("_", " ") }}</span>
   {% if a.status != "approved" %}{{ post("/assets/" ~ a.id ~ "/status", "Approve", fields={"status": "approved", "next": next}) }}{% endif %}
   {% if a.status != "discarded" %}{{ post("/assets/" ~ a.id ~ "/status", "Discard", "copy", fields={"status": "discarded", "next": next}) }}{% endif %}
-  {% if a.kind in ("idea", "script", "package", "seo", "brief") %}{{ post("/assets/" ~ a.id ~ "/regenerate", "Regenerate", "copy", fields={"next": next}) }}{% endif %}
+  {% if a.kind in ("idea", "script", "package", "seo", "brief") and a.data.source != "manual" %}{{ post("/assets/" ~ a.id ~ "/regenerate", "Regenerate", "copy", fields={"next": next}) }}{% endif %}
+  {% if a.kind in ("idea", "script", "package", "seo") %}
+    {% set what = "this idea and the script, package and SEO written for it" if a.kind == "idea" else "this " ~ a.kind %}
+    {{ post("/assets/" ~ a.id ~ "/delete", "Delete", "copy", fields={"next": next},
+            confirm=("It is approved. " if a.status == "approved" else "") ~ "Delete " ~ what ~ " for good? This cannot be undone.") }}
+  {% endif %}
 </div>
 {%- endmacro %}
 
 {% macro run_progress(run) -%}
 {% if run %}
-<div class="panel" data-run="{{ run.id }}">
-  <div class="section-head"><h2>Run #{{ run.id }}: {{ run.pipeline }}</h2><span class="pill {{ 'ok' if run.status == 'done' else 'err' if run.status == 'failed' else 'run' }}" data-run-status>{{ run.status }} {{ run.progress }}</span></div>
-  <ol class="muted" data-run-steps>{% for s in run.steps %}<li>{{ s.step }}: {{ s.status }}{% if s.error %} <span class="err-text">{{ s.error }}</span>{% endif %}</li>{% endfor %}</ol>
-  <p class="hint">This page updates by itself and reloads when the run finishes.</p>
+{% set live = run.status in ("pending", "running", "waiting") %}
+{% set steps %}<ol class="muted" data-run-steps>{% for s in run.steps %}<li>{{ s.step }}: {{ s.status }}{% if s.error %} <span class="err-text">{{ s.error }}</span>{% endif %}</li>{% endfor %}</ol>{% endset %}
+{% if run.status == "done" %}
+<details class="panel"><summary class="muted">Last run #{{ run.id }} ({{ run.pipeline }}): done {{ run.created_at | ago }}</summary>{{ steps }}</details>
+{% else %}
+<div class="panel" {% if live %}data-run="{{ run.id }}"{% endif %}>
+  <div class="section-head"><h2>Run #{{ run.id }}: {{ run.pipeline }}</h2>
+    <span class="pill {{ 'err' if run.status in ('failed', 'skipped') else 'run' }}" data-run-status>{{ run.status }} {{ run.progress }}</span></div>
+  {% if run.error and not live %}<p class="err-text">{{ run.error }}</p>{% endif %}
+  {{ steps }}
+  {% if live %}<p class="hint">This updates by itself and reloads when the run finishes.</p>
+  {% else %}{{ post("/jobs/runs/" ~ run.id ~ "/retry", "Retry from the failed step") }}{% endif %}
 </div>
+{% endif %}
 {% endif %}
 {%- endmacro %}

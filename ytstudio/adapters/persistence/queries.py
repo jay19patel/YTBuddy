@@ -87,6 +87,26 @@ class Queries:
             out.setdefault(a["kind"], a)
         return out
 
+    def drafts(self, user_id: int, channel_id: str, limit: int = 15) -> list[dict[str, Any]]:
+        """Title options, description and tags the assistant wrote for each idea, newest first."""
+        seo_by_idea = {
+            a["parent_id"]: a for a in reversed(self.assets(user_id, channel_id, ["seo"], limit=limit * 3))
+        }  # reversed: the newest SEO of an idea wins
+        out = []
+        for pk in self.assets(user_id, channel_id, ["package"], limit=limit):
+            if pk["status"] == "discarded":
+                continue
+            seo = seo_by_idea.get(pk["parent_id"], {}).get("data", {})
+            out.append(
+                {
+                    "label": f"{pk['title']} ({pk['created_at']:%-d %b})",
+                    "titles": [pair["title"] for pair in pk["data"].get("pairs", [])],
+                    "description": seo.get("description", ""),
+                    "tags": seo.get("tags", []),
+                }
+            )
+        return out
+
     def runs(self, user_id: int, channel_id: str | None = None, limit: int = 50) -> list[dict[str, Any]]:
         q = select(t.PipelineRun).where(t.PipelineRun.user_id == user_id)
         if channel_id:
@@ -103,6 +123,18 @@ class Queries:
             by_run.setdefault(st.run_id, []).append({k: v for k, v in _row(st).items() if k != "output"})
         return [_row(r) | {"steps": by_run.get(r.id or 0, [])} for r in runs]
 
+    def run_for_asset(self, user_id: int, asset: dict[str, Any]) -> dict[str, Any] | None:
+        """The newest run that made this asset, regenerated it, or (for an idea) developed it into a script."""
+        for r in self.runs(user_id, asset["channel_id"], limit=60):  # newest first
+            i = r["inputs"]
+            if r["id"] == asset.get("run_id") or asset["id"] in (i.get("asset_id"), i.get("idea_asset_id")):
+                return self.run(user_id, r["id"])
+        return None
+
+    def latest_run(self, user_id: int, channel_id: str) -> dict[str, Any] | None:
+        runs = self.runs(user_id, channel_id, limit=1)
+        return self.run(user_id, runs[0]["id"]) if runs else None
+
     def run(self, user_id: int, run_id: int) -> dict[str, Any] | None:
         with self._s() as s:
             r = s.get(t.PipelineRun, run_id)
@@ -118,6 +150,7 @@ class Queries:
             "status": r.status,
             "pipeline": r.pipeline,
             "error": r.error,
+            "created_at": r.created_at,
             "steps": steps,
             "progress": f"{sum(1 for x in steps if x['status'] == 'done')}/{len(planned) or len(steps)}",
         }

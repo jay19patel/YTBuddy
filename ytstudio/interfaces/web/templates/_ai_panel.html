@@ -1,0 +1,30 @@
+<form class="panel settings" method="post" action="/llm/save" autocomplete="off">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <h3>API keys</h3>
+  <p class="hint">Saved encrypted and never shown again. Leave a box empty to keep the saved key.</p>
+  {% for prov in ai.providers %}
+    <div class="job-row">
+      <label class="field" for="k-{{ prov.id }}">{{ prov.name }}</label>
+      <input type="password" id="k-{{ prov.id }}" name="key_{{ prov.id }}" autocomplete="off"
+             placeholder="{{ 'saved, ends …' ~ prov.hint if prov.set else 'paste a key' }}">
+      <p class="hint">{{ prov.status }}{% if prov.set %} ·
+        <label class="switch"><input type="checkbox" name="remove_{{ prov.id }}" value="1"> remove the saved key</label>{% endif %}</p>
+    </div>
+  {% endfor %}
+
+  <h3>Models</h3>
+  <p class="hint">Main model first, then fallbacks that are tried if it fails. Pick from the suggestions or type <code>provider/model</code>. Leave a row empty to use the default.</p>
+  {% for al in ai.aliases %}
+    <div class="job-row models-row">
+      <label class="field">{{ al.about }}</label>
+      <div class="models">
+        {% for i in range(ai.max_models) %}
+          <input type="text" list="ai-models" name="{{ al.id }}_{{ i + 1 }}" value="{{ al.models[i] if i < al.models | length else '' }}"
+                 placeholder="{{ al.used[i] if i < al.used | length else ('fallback ' ~ i if i else 'main model') }}">
+        {% endfor %}
+      </div>
+      <p class="hint">Now using {{ al.source }}: {{ al.used | join(" → ") }}</p>
+    </div>
+  {% endfor %}
+  <button class="btn quiet" type="submit">Save AI settings</button>
+</form>

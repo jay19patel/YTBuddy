@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% import "macros.html" as m with context %}
+{% block title %}Scripts · {{ current.title }}{% endblock %}
+{% block content %}
+<header><h1>Scripts</h1><span class="sub">One is written every day, plus any you ask for.</span></header>
+<form class="toolbar" method="get" action="/scripts">
+  <label>Status
+    <select name="status" data-autosubmit>
+      {% for v, name in [("", "All"), ("needs_review", "Needs review"), ("approved", "Approved"), ("discarded", "Discarded")] %}
+        <option value="{{ v }}" {% if (status or "") == v %}selected{% endif %}>{{ name }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <noscript><button class="btn quiet">Apply</button></noscript>
+</form>
+<section class="panel">
+  {% if scripts %}
+  <div class="cards">
+  {% for s in scripts %}{% set d = s.data %}
+    <article class="card">
+      <div class="section-head"><h3><a href="/assets/{{ s.id }}">{{ s.title }}</a></h3>{{ m.review_actions(s, "/scripts") }}</div>
+      <p class="muted">{{ s.created_at.strftime("%-d %b %Y") }} · about {{ d.script.estimated_minutes }} min · {{ d.script.sections | length }} sections
+        · hook panel score {{ d.hook.panel_score }} <span class="muted">({{ d.hook.band | lower }}, a heuristic)</span></p>
+      <pre class="copyable">{{ d.hook.hook }}</pre>
+    </article>
+  {% endfor %}
+  </div>
+  {% else %}<p class="muted">No scripts yet. The daily run writes one, or add your own idea on the Ideas page.</p>{% endif %}
+</section>
+{% endblock %}

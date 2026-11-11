@@ -13,6 +13,18 @@ class ChannelProfileOut(BaseModel):
     topics: list[str] = Field(max_length=8, description="Short search phrases people type for this niche")
 
 
+class ChannelSetupOut(BaseModel):
+    VERSION: ClassVar[str] = "1"
+    description: str = Field(description="The channel About text, at most 900 characters")
+    keywords: list[str] = Field(description="10 to 20 short channel keywords")
+    niche: str
+    language: Literal["en", "hi", "hinglish"]
+    region: str = Field(description="2-letter country code of the main audience")
+    topics: list[str] = Field(description="Up to 8 phrases people search for")
+    target_minutes: int
+    voice_md: str = Field(description="Markdown voice profile that ends with a channel analysis")
+
+
 class PerformanceOut(BaseModel):
     VERSION: ClassVar[str] = "1"
     summary: str

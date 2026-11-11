@@ -3,6 +3,24 @@
 {% block title %}Ideas · {{ current.title }}{% endblock %}
 {% block content %}
 <header><h1>Ideas backlog</h1></header>
+<section class="panel">
+  <h2>Add your own idea</h2>
+  <form method="post" action="/ideas/new">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <div class="row"><label class="field" for="i-title">Idea or topic</label>
+      <input type="text" id="i-title" name="title" maxlength="200" required placeholder="For example: Build an AI app with FastAPI in 30 minutes"></div>
+    <div class="row"><label class="field" for="i-details">Details (optional)</label>
+      <textarea id="i-details" name="details" rows="3" placeholder="Angle, key points, who it is for, anything the script must include"></textarea></div>
+    <div class="row"><label class="field" for="i-effort">Video type</label>
+      <select id="i-effort" name="effort" class="short-select">
+        <option value="standard">Standard video</option><option value="short">Short video</option><option value="anchor">Big anchor video</option>
+      </select></div>
+    <div class="actions">
+      <button class="btn quiet" type="submit" name="mode" value="script">Add and write script</button>
+      <button class="btn small" type="submit" name="mode" value="save">Just save the idea</button>
+    </div>
+  </form>
+</section>
 <form class="toolbar" method="get" action="/ideas">
   <label>Status
     <select name="status" data-autosubmit>

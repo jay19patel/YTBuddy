@@ -12,7 +12,7 @@ def test_google_login_creates_a_session_for_an_allowed_gmail(container, db_url):
     r = client.get("/login", follow_redirects=False)  # straight to Google; no password or PIN form
     assert r.status_code == 303 and "accounts.google.com" in r.headers["location"] and "ytnonce" in r.cookies
     r = client.get("/oauth2callback?state=st1&code=c", follow_redirects=False)
-    assert r.status_code == 303 and r.headers["location"] == "/today"
+    assert r.status_code == 303 and r.headers["location"] == "/insights"
     assert WebSessions(db_url).get(r.cookies["ytsid"])
     assert "httponly" in r.headers["set-cookie"].lower()
     assert client.get("/today").status_code == 200
@@ -171,3 +171,17 @@ def test_publish_modes_are_one_radio_group(container, user_and_channel, db_url):
     radios = re.findall(r'<input type="radio" name="mode" id="m-(\w+)"[^>]*>', html)
     owners = re.findall(r'<input type="radio" name="mode" id="m-\w+"[^>]*?form="(\w+)"', html)
     assert radios == ["video", "short", "live"] and owners == ["upload"] * 3
+
+
+def test_about_is_pushed_to_youtube_and_pulled_back(container, user_and_channel, db_url):
+    client, token = logged_in(db_url, user_and_channel[0])
+    form = {"description": "Python tutorials", "keywords": 'python "ai apps"'}
+    assert client.post("/settings/about", data=form).status_code == 403
+    assert client.post("/settings/about", data=form | {"csrf": token}, follow_redirects=False).status_code == 303
+    assert container.youtube.calls[-1] == "about:UCme"
+    assert "Python tutorials" in client.get("/settings").text
+    container.youtube.infos["UCme"].description = "Edited in Studio"  # changed on YouTube's side
+    container.sync.sync_stats()
+    assert "Edited in Studio" in client.get("/settings").text
+    too_long = client.post("/settings/about", data={"description": "x" * 1001, "csrf": token})
+    assert too_long.status_code == 400

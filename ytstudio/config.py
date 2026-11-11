@@ -23,7 +23,6 @@ class Settings(BaseSettings):
 
     # Google OAuth client: the JSON downloaded from Cloud Console (type "Web application").
     google_client_secrets_file: Path = ROOT / "YTStudioCred.json"
-    google_api_key: str = ""  # optional; lets public stats skip OAuth entirely
 
     # Comma-separated Fernet keys; the first encrypts, all decrypt (rotation).
     token_encryption_key: str = ""
@@ -39,8 +38,6 @@ class Settings(BaseSettings):
     pipelines_file: Path = ROOT / "config" / "pipelines.toml"
     prompts_dir: Path = ROOT / "prompts"
     vendor_dir: Path = ROOT / "vendor" / "youtube-agent-skill"
-    litellm_proxy_url: str = ""
-    litellm_proxy_key: str = ""
     llm_cache_ttl_s: int = 7 * 24 * 3600
 
     media_dir: Path = ROOT / "media"  # masters, rendered Shorts and covers live here

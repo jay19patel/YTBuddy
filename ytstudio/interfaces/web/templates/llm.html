@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% import "macros.html" as m with context %}
+{% block title %}LLM · AI models and keys{% endblock %}
+{% block content %}
+<header><h1>AI models and keys</h1><span class="sub">{{ user.email }}</span></header>
+<section class="panel">
+  <p class="muted">Choose which AI models write your ideas, scripts and channel setup, and paste your API keys here. They are saved encrypted in the database for your account; nothing about AI is set in <code>.env</code>.</p>
+  <div class="actions">
+    {% for alias in ("fast", "smart", "long") %}{{ m.post("/llm/test", "Test " ~ alias, "btn small", fields={"alias": alias}) }}{% endfor %}
+    {{ m.post("/llm/models", "Refresh model lists", "copy") }}
+  </div>
+  <datalist id="ai-models">{% for name in ai.models %}<option value="{{ name }}">{% endfor %}</datalist>
+</section>
+{% include "_ai_panel.html" %}
+{% endblock %}

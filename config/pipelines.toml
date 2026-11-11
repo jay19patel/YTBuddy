@@ -1,6 +1,8 @@
 # Which steps run, in order. Add a capability: write a Step class (ytstudio/application/steps_*.py) and
 # add its name here. Remove one: delete its name. Steps declare their own queue (io / llm / media).
 
+# Runs every day for each channel with a schedule: analysis, trends, 5 ideas, and a full script
+# (plus title/thumbnail options and SEO) for the best idea. Everything waits for your review.
 [pipelines.daily]
 steps = [
   "sync_channel",          # io: incremental own-video sync
@@ -8,17 +10,18 @@ steps = [
   "analyze_performance",   # llm: what is and isn't working
   "discover_trends",       # io: providers in parallel (chord)
   "rank_trends",           # io: outlier multiple vs each source channel's median
-  "generate_ideas",        # llm: 5 ranked ideas
+  "generate_ideas",        # llm: 5 ideas for this channel
   "write_script",          # llm: 5 hooks scored, best kept, full script
   "build_package",         # llm: 3 linted title + thumbnail pairs, thumbnail brief
   "write_seo",             # llm: description, tags, pinned comment, target queries
-  "save_brief",            # io: review queue + notify
+  "save_brief",            # io: review queue
 ]
 
-# Develop an idea you picked from the backlog.
+# Develop one idea (picked from the backlog, or typed by you) into script, package and SEO.
 [pipelines.develop]
 steps = ["write_script", "build_package", "write_seo", "save_brief"]
 
+# Upload a long video's master file on the Shorts page (or it is matched to a new upload): Shorts cut from it.
 [pipelines.shorts]
 steps = [
   "get_transcript",        # io: captions API

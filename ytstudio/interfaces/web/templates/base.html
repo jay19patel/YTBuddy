@@ -33,20 +33,21 @@
       </a>
     {% endfor %}
     <a class="add" href="/connect">+ Add channel</a>
-    <div class="nav">
-      {% for href, label in [("/today", "Today"), ("/ideas", "Ideas"), ("/shorts", "Shorts"), ("/insights", "Insights"), ("/trends", "Trends")] + ([("/publish", "Publish")] if flags.publish else []) + [("/jobs", "Jobs"), ("/settings", "Settings")] %}
-        <a href="{{ href }}" {% if path.startswith(href) %}aria-current="page"{% endif %}>{{ label }}</a>
-      {% endfor %}
-    </div>
     <div class="rail-foot">
       <strong>{{ user.email }}</strong>
       <form method="post" action="/logout"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="rail-btn" type="submit">Sign out</button></form>
+      <a class="rail-link" href="/llm" {% if path.startswith("/llm") %}aria-current="page"{% endif %}>LLM · AI models and keys</a>
     </div>
   </nav>
   {% endif %}
 
   <main>
-    {% if current %}<p class="chan"><img src="{{ current.thumb }}" alt="" referrerpolicy="no-referrer"> Channel: {{ current.title }}</p>{% endif %}
+    {% if current and not account_page %}<p class="chan"><img src="{{ current.thumb }}" alt="" referrerpolicy="no-referrer"> Channel: {{ current.title }}</p>{% endif %}
+    {% if current and not account_page %}<nav class="tabs" aria-label="Channel sections">
+      {% for href, label in [("/insights", "Insights"), ("/ideas", "Ideas"), ("/shorts", "Shorts"), ("/trends", "Trends")] + ([("/publish", "Publish")] if flags.publish else []) + [("/jobs", "Jobs"), ("/settings", "Settings")] %}
+        <a href="{{ href }}" {% if path.startswith(href) %}aria-current="page"{% endif %}>{{ label }}</a>
+      {% endfor %}
+    </nav>{% endif %}
     {% if success %}<div class="notice ok" role="status">{{ success | urlize }}
       {% if live %}
         <div class="keys">

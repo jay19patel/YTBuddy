@@ -93,6 +93,16 @@ class FakeYouTube:
     broken: set[str] = field(default_factory=set)
     cues: list[Cue] | None = None
     calls: list[str] = field(default_factory=list)
+    uploaded: list[dict[str, Any]] = field(default_factory=list)  # bodies of videos uploaded through the Publish page
+
+    def upload(self, channel_id: str, path: str, body: dict[str, Any]) -> str:
+        self.uploaded.append(body)
+        return "vid123"
+
+    def update_about(self, channel_id: str, description: str, keywords: str) -> None:
+        self.calls.append(f"about:{channel_id}")
+        info = self.infos[channel_id]
+        info.description, info.keywords = description, keywords
 
     def my_channel(self, token: OAuthToken) -> ChannelInfo | None:
         return list(self.infos.values())[-1] if self.infos else None  # the account just signed in
@@ -265,6 +275,16 @@ def llm_responses() -> dict[str, Any]:
             "tags": ["rent", "india"],
             "pinned_comment": "What's your rent?",
             "target_queries": ["reduce rent", "rent tips", "save on rent"],
+        },
+        "channel_setup": {
+            "description": "Python and AI projects for beginners, built step by step in Hindi.",
+            "keywords": ["Python", "#python", "ai projects", "AI Projects", "fastapi", "hindi coding"],
+            "niche": "Python and AI project tutorials for Hindi-speaking college students",
+            "language": "hinglish",
+            "region": "in",
+            "topics": ["python projects", "ai app tutorial"],
+            "target_minutes": 12,
+            "voice_md": "## Who I am talking to\nCollege students\n\n## Channel analysis\nShort tutorials do best.",
         },
         "detect_niche": {
             "niche": "personal finance for renters in India",

@@ -12,9 +12,12 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse, Response
 
+from ytstudio.adapters.youtube import friendly_error
 from ytstudio.config import get_settings
 from ytstudio.container import get_container
-from ytstudio.domain.models import Schedule, SyncSettings
+from ytstudio.domain.errors import DomainError
+from ytstudio.domain.models import Channel, Schedule, SyncSettings
+from ytstudio.domain.schedule import parse_local_datetime
 from ytstudio.interfaces.web.app import Page, back, csrf, page, queries, render
 
 router = APIRouter()
@@ -107,25 +110,42 @@ def health_part(part: str) -> Response:
 # ----- settings -----
 
 
+def settings_context(p: Page, channel: Channel | None = None, schedule: Schedule | None = None) -> dict[str, Any]:
+    """Everything the Settings page shows. A draft channel/schedule (not yet saved) can be passed in."""
+    c = get_container()
+    if p.active and not (channel and schedule):
+        with c.uow() as uow:
+            schedule = schedule or uow.schedules.get(p.channel_id)
+            channel = channel or uow.channels.get(p.channel_id)
+    s = get_settings()
+    return {
+        "settings": c.sync.settings(),
+        "jobs_status": jobs_status(),
+        "currencies": CURRENCIES,
+        "schedule": schedule,
+        "channel": channel,
+        "flags": {"publish": s.enable_manual_publish},
+    }
+
+
 @router.get("/settings")
 def settings_page(p: Page = Depends(page)) -> Response:
-    c = get_container()
-    schedule = None
-    if p.active:
-        with c.uow() as uow:
-            schedule = uow.schedules.get(p.channel_id)
-    s = get_settings()
-    return render(
-        p,
-        "settings.html",
-        settings=c.sync.settings(),
-        jobs_status=jobs_status(),
-        currencies=CURRENCIES,
-        schedule=schedule,
-        llm=c.llm_config["aliases"],
-        proxy=bool(s.litellm_proxy_url),
-        flags={"publish": s.enable_manual_publish, "ytdlp": s.enable_ytdlp, "auto_publish": s.enable_auto_publish},
+    return render(p, "settings.html", **settings_context(p))
+
+
+@router.post("/settings/generate")
+def generate_profile(brief: str = Form(""), p: Page = Depends(csrf)) -> Response:
+    """AI drafts the About text, keywords and channel profile from the owner's plain words. Nothing is saved:
+    the draft fills the forms below, and each form's own Save button keeps it."""
+    try:
+        channel, schedule = get_container().profiles.from_brief(p.user.id, p.channel_id, brief)
+    except DomainError as e:
+        return render(p, "settings.html", status_code=400, error=friendly_error(e), brief=brief, **settings_context(p))
+    note = (
+        "Done. Nothing is saved yet. Read the About box and the daily-brief box below, change anything you like, "
+        "then press each box's save button."
     )
+    return render(p, "settings.html", success=note, brief=brief, **settings_context(p, channel, schedule))
 
 
 @router.post("/settings")
@@ -151,6 +171,19 @@ def enqueue_job(job_id: str) -> None:
 
     get_container().redis.set(f"yt:beat:job:{job_id}:queued", "1", ex=600)
     run_job_now.apply_async(args=(job_id,), queue="io")
+
+
+@router.post("/settings/about")
+def save_about(description: str = Form(""), keywords: str = Form(""), p: Page = Depends(csrf)) -> Response:
+    """Push to YouTube first; the local copy changes only if YouTube accepted it."""
+    if len(description) > 1000 or len(keywords) > 500:
+        raise HTTPException(400, "YouTube allows at most 1000 characters of description and 500 of keywords.")
+    c = get_container()
+    c.youtube.update_about(p.channel_id, description, keywords)
+    with c.uow() as uow:
+        uow.channels.set_about(p.channel_id, description, keywords)
+        uow.commit()
+    return back("/settings", "about_saved")
 
 
 @router.post("/settings/run/{job_id}")
@@ -226,9 +259,15 @@ def publish_enabled() -> None:
         raise HTTPException(404)
 
 
+def publish_context(p: Page) -> dict[str, Any]:
+    with get_container().uow() as uow:
+        tz = uow.schedules.get(p.channel_id).timezone
+    return {"drafts": queries().drafts(p.user.id, p.channel_id), "tz": tz}
+
+
 @router.get("/publish", dependencies=[Depends(publish_enabled)])
 def publish(p: Page = Depends(page)) -> Response:
-    return render(p, "publish.html") if p.active else render(p, "empty.html")
+    return render(p, "publish.html", **publish_context(p)) if p.active else render(p, "empty.html")
 
 
 @router.post("/upload", dependencies=[Depends(publish_enabled)])
@@ -239,10 +278,17 @@ def upload(
     tags: str = Form(""),
     privacy: str = Form("private"),
     mode: str = Form("video"),
+    publish_at: str = Form(""),
     p: Page = Depends(csrf),
 ) -> Response:
+    ctx = publish_context(p)
     if privacy not in PRIVACY:
-        return render(p, "publish.html", status_code=400, error="Invalid privacy value.")
+        return render(p, "publish.html", status_code=400, error="Invalid privacy value.", **ctx)
+    status: dict[str, Any] = {"privacyStatus": privacy, "selfDeclaredMadeForKids": False}
+    when = None
+    if publish_at.strip():  # scheduled: uploaded as private now, YouTube makes it public at that time
+        when = parse_local_datetime(publish_at, ctx["tz"], datetime.now(UTC))
+        status = {**status, "privacyStatus": "private", "publishAt": when.strftime("%Y-%m-%dT%H:%M:%SZ")}
     is_short = mode == "short"
     if is_short and "#shorts" not in (title + description).lower():
         # Shorts = vertical video under 3 min; the tag helps YouTube classify it.
@@ -260,13 +306,14 @@ def upload(
                     "tags": [t.strip() for t in tags.split(",") if t.strip()],
                     "categoryId": "22",
                 },
-                "status": {"privacyStatus": privacy, "selfDeclaredMadeForKids": False},
+                "status": status,
             },
         )
     finally:
         os.unlink(tmp.name)
     kind = "Short" if is_short else "Video"
-    return render(p, "publish.html", success=f"{kind} uploaded: https://youtu.be/{vid}")
+    planned = f" and scheduled for {publish_at.strip().replace('T', ' ')} ({ctx['tz']})" if when else ""
+    return render(p, "publish.html", success=f"{kind} uploaded{planned}: https://youtu.be/{vid}", **ctx)
 
 
 @router.post("/live", dependencies=[Depends(publish_enabled)])
@@ -278,7 +325,7 @@ def live(
     p: Page = Depends(csrf),
 ) -> Response:
     if privacy not in PRIVACY:
-        return render(p, "publish.html", status_code=400, error="Invalid privacy value.")
+        return render(p, "publish.html", status_code=400, error="Invalid privacy value.", **publish_context(p))
     start = datetime.now(UTC) + timedelta(minutes=max(start_in_minutes, 0))
     info = get_container().youtube.create_live(p.channel_id, title, description, privacy, start)
     return render(
