@@ -1,0 +1,46 @@
+# LLM aliases. Code only ever names an alias; real model names live here.
+# Each alias: primary model first, then ordered fallbacks (may cross providers).
+# Keys come from the environment (ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, ...).
+# Model strings use LiteLLM's "provider/model" form: https://docs.litellm.ai/docs/providers
+# Set LITELLM_PROXY_URL to send every alias through a LiteLLM proxy instead.
+
+[defaults]
+max_tokens = 16000
+timeout_s = 180
+num_retries = 2      # Router-level retries per model before falling back
+allowed_fails = 3
+cooldown_s = 60
+
+[aliases.fast]       # classification, tagging, niche detection
+models = ["anthropic/claude-haiku-5-5", "anthropic/claude-sonnet-5-5"]
+
+[aliases.smart]      # ideas, scripts, packages
+models = ["anthropic/claude-opus-5-5", "anthropic/claude-sonnet-5-5"]
+
+[aliases.long]       # full transcripts (1M context)
+models = ["anthropic/claude-opus-5-5", "anthropic/claude-sonnet-5-5"]
+
+# Example cross-provider fallback (uncomment and set OPENAI_API_KEY):
+# models = ["anthropic/claude-opus-5-5", "openai/<model>"]
+
+# USD per million tokens. Used for cost tracking when LiteLLM's own price map lacks a model.
+[prices."anthropic/claude-opus-5-5"]
+input = 4.0
+output = 20.0
+
+[prices."anthropic/claude-sonnet-5-5"]
+input = 2.0
+output = 10.0
+
+[prices."anthropic/claude-haiku-5-5"]
+input = 0.10
+output = 0.50
+
+# Token bucket per provider: requests per second and burst.
+[rate_limits.anthropic]
+rate = 1.0
+burst = 5
+
+[rate_limits.openai]
+rate = 1.0
+burst = 5
