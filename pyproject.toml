@@ -37,4 +37,48 @@ dev = [
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
+filterwarnings = ["ignore::DeprecationWarning:celery.*", "ignore:Router.model_list is deprecated:DeprecationWarning"]
 testpaths = ["tests"]
+
+[project.optional-dependencies]
+media = ["faster-whisper>=1.1.0"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+extend-exclude = ["vendor"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S", "SIM", "RUF"]
+ignore = ["S101", "S603", "S607", "S311", "RUF001", "RUF003", "B008", "B904", "SIM105", "RUF012"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["ytstudio", "tests"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S", "B017", "RUF059"]
+"migrations/*" = ["E501"]
+
+[tool.mypy]
+python_version = "3.12"
+packages = ["ytstudio"]
+ignore_missing_imports = true
+warn_unused_ignores = true
+check_untyped_defs = true
+
+[[tool.mypy.overrides]]  # strict on the core (domain, use cases, ports); adapters and interfaces get stricter over time
+module = ["ytstudio.domain.*", "ytstudio.application.*", "ytstudio.ports", "ytstudio.config"]
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+disallow_untyped_calls = true
+disallow_any_generics = true
+warn_return_any = true
+no_implicit_reexport = true
+strict_equality = true
+
+[tool.coverage.run]
+source = ["ytstudio"]
+omit = ["ytstudio/cli.py"]
+
+[tool.coverage.report]
+skip_empty = true
