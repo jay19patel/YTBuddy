@@ -2,7 +2,7 @@
 
 ## 0.3.0 (2026-11-11)
 ### Added
-- AI models and keys on their own LLM page (sidebar, under Sign out): paste provider keys (Gemini, Mistral, OpenAI, Anthropic) and choose the main and fallback model for the fast, smart and long aliases, per account (one box, no global setting). Keys are stored encrypted and never shown again; "Test" and "Refresh model lists" buttons check them. Migration `0010`. Removed from `.env` and the code: `GEMINI_API_KEY`, `MISTRAL_API_KEY`, `GOOGLE_API_KEY` (public YouTube reads now always use your channel's login) and `LITELLM_PROXY_URL`/`KEY`. Nothing about AI is read from the environment any more.
+- AI models and keys on their own LLM page (sidebar, under Sign out): paste provider keys (Gemini, Mistral, OpenAI, Anthropic) and choose the main and fallback model for the fast, smart and long aliases, per account (one box, no global setting). Keys are stored encrypted and never shown again; "Test" and "Refresh model lists" buttons check them. BazaarLink (an OpenAI-compatible service) is a supported provider, models written `bazaarlink/<model>`. Migration `0010`. Removed from `.env` and the code: `GEMINI_API_KEY`, `MISTRAL_API_KEY`, `GOOGLE_API_KEY` (public YouTube reads now always use your channel's login) and `LITELLM_PROXY_URL`/`KEY`. Nothing about AI is read from the environment any more.
 - Delete ideas, scripts, packages and SEO (deleting an idea also removes what was written for it).
 - The run panel on a page now survives a refresh: the latest run for the asset or channel shows, polls only while it is running, and a failed run offers Retry.
 - Channel-first layout: the sidebar lists only channels; each channel opens on Insights, with tabs for Ideas, Shorts, Trends, Jobs and Settings.

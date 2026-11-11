@@ -3,6 +3,7 @@
 import httpx
 
 from ytstudio.domain.errors import PermanentError, TransientError
+from ytstudio.domain.llm import COMPATIBLE
 
 
 def list_models(provider: str, key: str) -> list[str]:
@@ -13,6 +14,8 @@ def list_models(provider: str, key: str) -> list[str]:
         "openai": "https://api.openai.com/v1/models",
         "anthropic": "https://api.anthropic.com/v1/models",
     }
+    if provider in COMPATIBLE:
+        urls[provider] = f"{COMPATIBLE[provider]}/models"
     headers: dict[str, str] = {}
     params: dict[str, str | int] = {}
     if provider == "gemini":

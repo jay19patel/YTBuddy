@@ -175,3 +175,38 @@ def test_the_llm_page_works_before_any_channel_is_connected(container, db_url):
     owner = container.accounts.owner("me@example.com")
     client, _ = logged_in(db_url, owner.id)
     assert client.get("/llm").status_code == 200  # you can set your keys before connecting a channel
+
+
+def test_an_openai_compatible_provider_is_reached_through_its_own_address():
+    from ytstudio.domain.llm import litellm_params
+
+    model = "bazaarlink/qwen/qwen3.7-flash:free"
+    assert clean_models([model]) == [model]  # slashes, dots and a ":free" suffix are fine
+    assert litellm_params(model) == {
+        "model": "openai/qwen/qwen3.7-flash:free",
+        "api_base": "https://api.bazaarlink.ai/v1",
+    }
+    assert litellm_params("gemini/gemini-flash-latest") == {"model": "gemini/gemini-flash-latest"}
+    eff = EffectiveLLM(aliases={"smart": [model]}, keys={"bazaarlink": "sk-bl-test-key"})
+    dep = build_router({"aliases": {}, "defaults": {}}, eff=eff).model_list[0]["litellm_params"]
+    assert (dep["model"], dep["api_base"], dep["api_key"]) == (
+        "openai/qwen/qwen3.7-flash:free",
+        "https://api.bazaarlink.ai/v1",
+        "sk-bl-test-key",
+    )
+
+
+def test_model_list_of_an_openai_compatible_provider(monkeypatch):
+    import httpx
+
+    from ytstudio.adapters.llm_models import list_models
+
+    seen = {}
+
+    def fake_get(url, headers, params, timeout):
+        seen.update(url=url, auth=headers["Authorization"])
+        return httpx.Response(200, json={"data": [{"id": "qwen/qwen3.7-flash:free"}, {"id": "a/b"}]})
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+    assert list_models("bazaarlink", "sk-bl-test") == ["bazaarlink/a/b", "bazaarlink/qwen/qwen3.7-flash:free"]
+    assert seen == {"url": "https://api.bazaarlink.ai/v1/models", "auth": "Bearer sk-bl-test"}

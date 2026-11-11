@@ -283,3 +283,5 @@ body.bare { display: block; }
 .job-row .models, .models-row .models { grid-column: 1 / -1; }
 .rail-link { display: block; margin-top: 10px; font-size: 13px; color: #c3c9cf; text-decoration: none; }
 .rail-link:hover, .rail-link[aria-current] { color: #fff; text-decoration: underline; }
+.next { border: 1px solid var(--line); border-left: 4px solid var(--ok); border-radius: var(--r-sm); padding: 4px 16px 12px; margin: 14px 0; }
+.next h3 { margin: 10px 0 4px; }

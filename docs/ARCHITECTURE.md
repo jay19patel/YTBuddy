@@ -85,7 +85,7 @@ Then add `"summarise_comments"` to a pipeline in `config/pipelines.toml`, add `p
 
 ## Guide: add an LLM provider or model
 
-1. Paste the key on the LLM page (sidebar, under Sign out). Keys are stored encrypted in the database, never in `.env`. A new provider needs one line in `PROVIDERS` in `ytstudio/domain/llm.py` and a branch in `ytstudio/adapters/llm_models.py`.
+1. Paste the key on the LLM page (sidebar, under Sign out). Keys are stored encrypted in the database, never in `.env`. A new provider needs one line in `PROVIDERS` in `ytstudio/domain/llm.py` and a branch in `ytstudio/adapters/llm_models.py`. A service that speaks the OpenAI API at its own address (like BazaarLink) is one line in `COMPATIBLE` instead: LiteLLM reaches it through its `openai/` route with that base URL.
 2. In `config/llm.toml`, add the model to an alias's `models` list (`"provider/model"`), in fallback order. Add a `[prices."provider/model"]` entry if LiteLLM's price map lacks it, and a `[rate_limits.provider]` bucket.
 3. Restart the workers. No code changes: code only names the aliases `fast`, `smart` and `long`.
 4. To add a new alias, add `[aliases.new]` and use it in a step's `self.ask(ctx, "new", ...)`.

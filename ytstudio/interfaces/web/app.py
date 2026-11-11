@@ -42,6 +42,7 @@ MESSAGES = {
     "disconnected": "Channel removed and its Google access revoked.",
     "connected": "Channel connected. Its niche, language and region are being detected; confirm them below.",
     "already": "Already ran today for this channel; showing that run.",
+    "done_already": "That is already done. The script, titles and SEO are on this page.",
     "busy": "Another run for this channel is active.",
 }
 

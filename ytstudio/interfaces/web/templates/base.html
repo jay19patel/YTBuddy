@@ -44,7 +44,7 @@
   <main>
     {% if current and not account_page %}<p class="chan"><img src="{{ current.thumb }}" alt="" referrerpolicy="no-referrer"> Channel: {{ current.title }}</p>{% endif %}
     {% if current and not account_page %}<nav class="tabs" aria-label="Channel sections">
-      {% for href, label in [("/insights", "Insights"), ("/ideas", "Ideas"), ("/shorts", "Shorts"), ("/trends", "Trends")] + ([("/publish", "Publish")] if flags.publish else []) + [("/jobs", "Jobs"), ("/settings", "Settings")] %}
+      {% for href, label in [("/insights", "Insights"), ("/today", "Today"), ("/scripts", "Scripts"), ("/ideas", "Ideas"), ("/shorts", "Shorts"), ("/trends", "Trends")] + ([("/publish", "Publish")] if flags.publish else []) + [("/jobs", "Jobs"), ("/settings", "Settings")] %}
         <a href="{{ href }}" {% if path.startswith(href) %}aria-current="page"{% endif %}>{{ label }}</a>
       {% endfor %}
     </nav>{% endif %}

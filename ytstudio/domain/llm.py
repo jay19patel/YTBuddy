@@ -8,7 +8,15 @@ from dataclasses import dataclass, field
 
 from ytstudio.domain.errors import PermanentError
 
-PROVIDERS = {"gemini": "Google Gemini", "mistral": "Mistral", "openai": "OpenAI", "anthropic": "Anthropic"}
+PROVIDERS = {
+    "gemini": "Google Gemini",
+    "mistral": "Mistral",
+    "openai": "OpenAI",
+    "anthropic": "Anthropic",
+    "bazaarlink": "BazaarLink",
+}
+# Services that speak the OpenAI API at their own address. A model is written bazaarlink/<their model name>.
+COMPATIBLE = {"bazaarlink": "https://api.bazaarlink.ai/v1"}
 ALIASES = {
     "fast": "Fast: niche detection, tagging",
     "smart": "Smart: ideas, scripts, titles, SEO, channel setup",
@@ -20,6 +28,14 @@ MODEL = re.compile(r"[a-z0-9_-]+/[\w.:@/+-]+")
 
 def provider_of(model: str) -> str:
     return model.split("/", 1)[0]
+
+
+def litellm_params(model: str) -> dict[str, str]:
+    """How LiteLLM is told to reach a model written provider/model."""
+    provider, _, name = model.partition("/")
+    if provider in COMPATIBLE:
+        return {"model": f"openai/{name}", "api_base": COMPATIBLE[provider]}
+    return {"model": model}
 
 
 def clean_models(values: list[str]) -> list[str]:

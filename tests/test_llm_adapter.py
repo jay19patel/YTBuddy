@@ -238,3 +238,10 @@ def test_keys_are_never_taken_from_the_environment(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "from-the-environment")
     router = build_router({"aliases": {"fast": {"models": ["gemini/gemini-flash-latest"]}}, "defaults": {}})
     assert "api_key" not in router.model_list[0]["litellm_params"]  # only keys saved on the LLM page are passed on
+
+
+def test_free_models_cost_nothing_and_do_not_warn(adapter_factory, user_and_channel, caplog):
+    llm, _ = adapter_factory('{"answer": "x"}')
+    free = "bazaarlink/qwen/qwen3.7-flash:free"
+    assert llm._cost(object(), "qwen/qwen3.7-flash:free", (1_000_000, 1_000_000), free) == 0.0
+    assert "no price" not in caplog.text

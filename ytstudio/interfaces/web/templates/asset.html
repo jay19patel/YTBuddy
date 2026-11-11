@@ -15,7 +15,24 @@
       <dt>Different</dt><dd>{{ d.difference }}</dd>
       <dt>Effort</dt><dd>{{ d.effort }}</dd>
     </dl>
-    <div class="actions">{{ m.post("/ideas/" ~ a.id ~ "/develop", "Develop: script, package, SEO", "btn small") }}</div>
+    {% if developed.script %}
+      <div class="next">
+        <h3>Script ready</h3>
+        <p class="muted">Read it, edit what you want, then approve it. For the upload, the Publish page fills in the title, description and tags. Nothing is uploaded until you press the button there.</p>
+        <div class="actions">
+          <a class="btn small" href="/assets/{{ developed.script.id }}">Open the script</a>
+          {% if developed.package %}<a class="copy" href="/assets/{{ developed.package.id }}">Titles and thumbnail text</a>{% endif %}
+          {% if developed.seo %}<a class="copy" href="/assets/{{ developed.seo.id }}">Description and tags</a>{% endif %}
+          {% if flags.publish %}<a class="copy" href="/publish">Go to Publish</a>{% endif %}
+        </div>
+      </div>
+    {% else %}
+      <div class="next">
+        <h3>Next step: write the script</h3>
+        <p class="muted">This writes the script, three title options with thumbnail text, and the SEO text for this idea. It takes about a minute.</p>
+        <div class="actions">{{ m.post("/ideas/" ~ a.id ~ "/develop", "Write script, titles and SEO", "btn small") }}</div>
+      </div>
+    {% endif %}
     {% for kind, x in developed.items() %}<p><a href="/assets/{{ x.id }}">{{ kind | capitalize }}</a> <span class="tag {{ x.status }}">{{ x.status | replace("_", " ") }}</span></p>{% endfor %}
     <details class="edit"><summary>Edit</summary>
       <form method="post" action="/assets/{{ a.id }}/edit"><input type="hidden" name="csrf" value="{{ csrf }}">

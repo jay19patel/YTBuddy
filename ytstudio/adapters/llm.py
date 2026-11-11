@@ -25,7 +25,7 @@ from pydantic import BaseModel, ValidationError
 
 from ytstudio.domain.errors import BudgetExceeded, LLMOutputInvalid, PermanentError, TransientError
 from ytstudio.domain.events import BudgetReached, Event
-from ytstudio.domain.llm import PROVIDERS, EffectiveLLM, provider_of
+from ytstudio.domain.llm import PROVIDERS, EffectiveLLM, litellm_params, provider_of
 from ytstudio.logging_setup import redact
 from ytstudio.ports import LLMRequest, PromptRepository, RateLimiter, T, UowFactory
 
@@ -48,7 +48,7 @@ def build_router(cfg: dict[str, Any], eff: EffectiveLLM | None = None) -> Any:
         names = []
         for i, model in enumerate(models):
             name = alias if i == 0 else f"{alias}#{i}"
-            params = {"model": model} | cfg["aliases"].get(alias, {}).get("params", {})
+            params = litellm_params(model) | cfg["aliases"].get(alias, {}).get("params", {})
             if eff and (key := eff.keys.get(provider_of(model))):
                 params["api_key"] = key  # saved on the LLM page
             model_list.append({"model_name": name, "litellm_params": params})
@@ -240,6 +240,8 @@ class LiteLLMAdapter:
     def _cost(self, resp: Any, model: str, tokens: tuple[int, int], primary: str) -> float:
         """Configured price for the model; else LiteLLM's price map; else the alias's primary model price.
         "-latest" aliases come back under the resolved model name, so the last fallback keeps the budget honest."""
+        if model.endswith(":free") or primary.endswith(":free"):  # a free tier model (the OpenRouter-style suffix)
+            return 0.0
         prices = self.cfg.get("prices", {})
         price = next((p for name, p in prices.items() if name == model or name.split("/")[-1] == model), None)
         if not price:

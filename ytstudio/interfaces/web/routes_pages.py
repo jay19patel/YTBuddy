@@ -17,7 +17,7 @@ PERIODS = (7, 28, 90, 365)
 
 
 def started(url: str, result: Any) -> Response:
-    msg = {"running": "started", "skipped": "busy"}.get(str(result.status), "already")
+    msg = {"running": "started", "skipped": "busy", "done": "done_already"}.get(str(result.status), "already")
     return back(url, msg, result.run_id)
 
 
