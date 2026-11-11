@@ -1,131 +1,127 @@
-"""Characterization tests: what the pre-refactor app (commit 9f05e75) does today.
+"""Characterization tests: behaviours of the original app (commit 9f05e75), checked against the new code.
 
-Written before any refactor. Google is mocked; nothing leaves the machine.
+Intentional changes, each from docs/REVIEW.md:
+- every page needs a login now (S4); OAuth state is server-side and bound to the browser (S8)
+- "remove channel" is a CSRF-protected POST that also revokes the Google token (S6)
+- tokens are stored encrypted (S1)
 """
 
 import json
-import os
-import tempfile
-from unittest import mock
 from urllib.parse import parse_qs, urlparse
 
-import pytest
+from fastapi.testclient import TestClient
+from sqlmodel import select
 
-os.environ["YTSTUDIO_DB"] = os.path.join(tempfile.mkdtemp(), "char.db")
-
-from fastapi.testclient import TestClient  # noqa: E402
-from sqlmodel import select  # noqa: E402
-
-import db  # noqa: E402
-import jobs  # noqa: E402
-import main  # noqa: E402
-
-FAKE_SECRET = {
-    "web": {
-        "client_id": "cid.apps.googleusercontent.com",
-        "client_secret": "csecret",
-        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-        "token_uri": "https://oauth2.googleapis.com/token",
-        "redirect_uris": ["http://localhost:8000/oauth2callback"],
-    }
-}
+from ytstudio.adapters.persistence import tables as t
+from ytstudio.adapters.persistence.db import session_for
+from ytstudio.adapters.persistence.web_sessions import WebSessions
+from ytstudio.adapters.youtube import GoogleOAuth
+from ytstudio.domain.models import SyncSettings
+from ytstudio.interfaces.web.app import create_app
 
 
-@pytest.fixture(autouse=True)
-def clean(tmp_path, monkeypatch):
-    secret = tmp_path / "cred.json"
-    secret.write_text(json.dumps(FAKE_SECRET))
-    monkeypatch.setattr(main, "CLIENT_SECRET", secret)
-    db.SQLModel.metadata.drop_all(db.engine)
-    db.init_db()
-    main.pending_flows.clear()
-    yield
+def logged_in(db_url: str, user_id: int) -> tuple[TestClient, str]:
+    client = TestClient(create_app())
+    ws = WebSessions(db_url)
+    cookie = ws.create(user_id)
+    client.cookies.set("ytsid", cookie)
+    info = ws.get(cookie)
+    assert info
+    return client, info.csrf
 
 
-client = TestClient(main.app)
+def test_pages_render(container, user_and_channel, db_url):
+    client, _ = logged_in(db_url, user_and_channel[0])
+    for path in (
+        "/today",
+        "/insights",
+        "/settings",
+        "/ideas",
+        "/shorts",
+        "/trends",
+        "/jobs",
+        "/publish",
+        "/notifications",
+    ):
+        r = client.get(path)
+        assert r.status_code == 200, path
 
 
-def creds_json() -> str:
-    return json.dumps({"token": "at", "refresh_token": "rt", "client_id": "cid", "client_secret": "cs",
-                       "token_uri": "https://oauth2.googleapis.com/token", "scopes": main.SCOPES,
-                       "expiry": "2999-01-01T00:00:00Z"})
+def test_pages_need_login(container):
+    r = TestClient(create_app()).get("/today", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/login"
 
 
-def add_channel(cid="UC1", title="One"):
-    with db.get_session() as s:
-        s.add(db.Channel(id=cid, title=title, thumb="t", creds=creds_json()))
-        s.commit()
-
-
-def test_pages_render():
-    for path in ("/", "/analytics", "/settings"):
-        assert client.get(path).status_code == 200
-
-
-def test_auth_redirect_has_state_pkce_offline_consent():
-    r = client.get("/auth", follow_redirects=False)
+def test_connect_redirect_has_state_pkce_offline_consent(container, user_and_channel, db_url):
+    container.o["oauth"] = GoogleOAuth("cid", "secret", "http://testserver/oauth2callback")
+    container.__dict__.pop("oauth", None)
+    client, _ = logged_in(db_url, user_and_channel[0])
+    r = client.get("/connect", follow_redirects=False)
     q = parse_qs(urlparse(r.headers["location"]).query)
-    assert r.status_code == 307
     assert q["access_type"] == ["offline"]
     assert q["prompt"] == ["select_account consent"]
     assert q["code_challenge_method"] == ["S256"]
-    assert q["state"][0] in main.pending_flows
+    with session_for(db_url) as s:
+        row = s.get(t.OAuthState, q["state"][0])
+    assert row and row.purpose == "connect" and row.code_verifier
+    assert "ytnonce" in r.cookies
 
 
-def test_callback_unknown_state_shows_error():
-    r = client.get("/oauth2callback?state=nope&code=x")
-    assert "Login session expired" in r.text
+def test_callback_unknown_state_shows_error(container):
+    r = TestClient(create_app()).get("/oauth2callback?state=nope&code=x")
+    assert r.status_code == 400 and "expired" in r.text
 
 
-def test_callback_success_stores_channel():
-    flow = mock.MagicMock()
-    flow.credentials.to_json.return_value = creds_json()
-    main.pending_flows["s1"] = flow
-    yt = mock.MagicMock()
-    yt.channels().list().execute.return_value = {
-        "items": [{"id": "UCX", "snippet": {"title": "X", "thumbnails": {"default": {"url": "u"}}}}]
-    }
-    with mock.patch.object(main, "build", return_value=yt), mock.patch.object(jobs, "run_now"):
-        r = client.get("/oauth2callback?state=s1&code=c", follow_redirects=False)
-    assert r.status_code == 307 and r.cookies.get("channel") == "UCX"
-    with db.get_session() as s:
-        assert s.get(db.Channel, "UCX").title == "X"
+def test_callback_success_stores_channel(container, user_and_channel, db_url, monkeypatch):
+    from ytstudio.interfaces import worker
+
+    monkeypatch.setattr(worker.detect_profile, "apply_async", lambda **kw: None)
+    client, _ = logged_in(db_url, user_and_channel[0])
+    r = client.get("/connect", follow_redirects=False)
+    assert "st1" in r.headers["location"]
+    r = client.get("/oauth2callback?state=st1&code=c", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"].startswith("/settings")
+    assert r.cookies.get("channel") == "UCme"
+    assert container.vault.load("UCme").refresh_token == "rt"
 
 
-def test_sync_stats_updates_channels_and_snapshot():
-    add_channel()
-    found = {"UC1": {"snippet": {"title": "New", "thumbnails": {"default": {"url": "u2"}}},
-                     "statistics": {"subscriberCount": "5", "viewCount": "50", "videoCount": "2"}}}
-    with mock.patch.object(jobs, "fetch_stats", return_value=found):
-        assert jobs.sync_stats() == "Updated 1 channel(s)."
-    with db.get_session() as s:
-        c = s.get(db.Channel, "UC1")
-        assert (c.title, c.subscribers, c.views, c.videos) == ("New", 5, 50, 2)
-        assert len(list(s.exec(select(db.Snapshot)))) == 1
+def test_sync_stats_updates_channels_and_snapshot(container, user_and_channel, yt, db_url):
+    yt.infos["UCme"].subscribers, yt.infos["UCme"].title = 5, "New"
+    assert container.sync.sync_stats() == "Updated 1 channel(s)."
+    with session_for(db_url) as s:
+        c = s.get(t.Channel, "UCme")
+        assert (c.title, c.subscribers) == ("New", 5)
+        assert len(list(s.exec(select(t.Snapshot)))) == 1
 
 
-def test_sync_analytics_error_recorded_for_all_periods():
-    add_channel()
-    with mock.patch.object(jobs, "fetch_analytics", side_effect=RuntimeError("boom")):
-        with pytest.raises(RuntimeError):
-            jobs.sync_analytics()
-    with db.get_session() as s:
-        rows = list(s.exec(select(db.AnalyticsCache)))
+def test_sync_analytics_error_recorded_for_all_periods(container, user_and_channel, yt, db_url, monkeypatch):
+    from ytstudio.domain.errors import PermanentError
+
+    def boom(*a, **k):
+        raise PermanentError("boom")
+
+    monkeypatch.setattr(yt, "channel_report", boom)
+    try:
+        container.sync.sync_analytics()
+        raise AssertionError("should raise")
+    except PermanentError:
+        pass
+    with session_for(db_url) as s:
+        rows = list(s.exec(select(t.AnalyticsCache)))
     assert sorted(r.days for r in rows) == [7, 28, 90, 365]
     assert all(json.loads(r.data) == {"error": "boom"} for r in rows)
 
 
-def test_settings_are_clamped():
-    with mock.patch.object(jobs, "apply_settings"):
-        r = client.post("/settings", data={"stats_minutes": 0, "analytics_minutes": 99999, "currency": "EUR"},
-                        follow_redirects=False)
-    assert r.status_code == 303
-    s = db.get_settings()
+def test_settings_are_clamped(container, user_and_channel):
+    container.sync.save_settings(SyncSettings(0, 99999, True, True, "EUR"), ("USD", "INR"))
+    s = container.sync.settings()
     assert (s.stats_minutes, s.analytics_minutes, s.currency) == (1, 1440, "USD")
 
 
-def test_remove_deletes_channel_and_its_rows():
-    add_channel()
-    client.get("/remove/UC1", follow_redirects=False)
-    with db.get_session() as s:
-        assert s.get(db.Channel, "UC1") is None
+def test_remove_deletes_channel_and_revokes(container, user_and_channel, db_url):
+    client, token = logged_in(db_url, user_and_channel[0])
+    r = client.post("/channels/UCme/disconnect", data={"csrf": token}, follow_redirects=False)
+    assert r.status_code == 303
+    with session_for(db_url) as s:
+        assert s.get(t.Channel, "UCme") is None
+    assert container.oauth.revoked == ["rt"]
