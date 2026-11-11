@@ -1,0 +1,35 @@
+# Which steps run, in order. Add a capability: write a Step class (ytstudio/application/steps_*.py) and
+# add its name here. Remove one: delete its name. Steps declare their own queue (io / llm / media).
+
+[pipelines.daily]
+steps = [
+  "sync_channel",          # io: incremental own-video sync
+  "fetch_performance",     # io: last 90 days vs own median + retention
+  "analyze_performance",   # llm: what is and isn't working
+  "discover_trends",       # io: providers in parallel (chord)
+  "rank_trends",           # io: outlier multiple vs each source channel's median
+  "generate_ideas",        # llm: 5 ranked ideas
+  "write_script",          # llm: 5 hooks scored, best kept, full script
+  "build_package",         # llm: 3 linted title + thumbnail pairs, thumbnail brief
+  "write_seo",             # llm: description, tags, pinned comment, target queries
+  "save_brief",            # io: review queue + notify
+]
+
+# Develop an idea you picked from the backlog.
+[pipelines.develop]
+steps = ["write_script", "build_package", "write_seo", "save_brief"]
+
+[pipelines.shorts]
+steps = [
+  "get_transcript",        # io: captions API
+  "transcribe_fallback",   # media: faster-whisper only if no captions
+  "build_chapters",        # io: chapters + dead-air edit list from the transcript
+  "pick_short_candidates", # llm: 15-58 s self-contained windows, new first line
+  "render_shorts",         # media: one task per Short (chord)
+  "make_covers",           # media: Pillow cover per Short
+  "write_short_meta",      # llm: title + description per Short
+  "queue_shorts",          # io: review queue + notify
+]
+
+[trends]
+providers = ["most_popular", "niche_search", "custom_topics"]

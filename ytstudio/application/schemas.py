@@ -1,0 +1,98 @@
+"""Structured LLM outputs. Bump VERSION when a schema changes: it is part of the LLM cache key."""
+
+from typing import ClassVar, Literal
+
+from pydantic import BaseModel, Field
+
+
+class ChannelProfileOut(BaseModel):
+    VERSION: ClassVar[str] = "1"
+    niche: str = Field(description="One line, specific: who it is for and what about")
+    language: Literal["en", "hi", "hinglish"]
+    region: str = Field(description="ISO 3166-1 alpha-2 country code of the main audience")
+    topics: list[str] = Field(max_length=8, description="Short search phrases people type for this niche")
+
+
+class PerformanceOut(BaseModel):
+    VERSION: ClassVar[str] = "1"
+    summary: str
+    working: list[str] = Field(max_length=5, description="Patterns shared by the top performers, citing video ids")
+    not_working: list[str] = Field(max_length=5, description="Patterns shared by the bottom performers")
+    retention_notes: list[str] = Field(default_factory=list, max_length=5)
+
+
+class IdeaOut(BaseModel):
+    title: str
+    angle: str
+    why_now: str = Field(description="Why this is timely, tied to the outlier videos listed in outlier_refs")
+    outlier_refs: list[str] = Field(description="video_id values from the outlier list only")
+    difference: str = Field(description="What makes this different from those outliers")
+    builds_on: list[str] = Field(default_factory=list, description="video_id values of the creator's own videos")
+    effort: Literal["short", "standard", "anchor"]
+
+
+class IdeasOut(BaseModel):
+    VERSION: ClassVar[str] = "1"
+    ideas: list[IdeaOut] = Field(min_length=5, max_length=5)
+
+
+class HooksOut(BaseModel):
+    VERSION: ClassVar[str] = "1"
+    hooks: list[str] = Field(min_length=5, max_length=5, description="Five spoken opening lines, one formula each")
+
+
+class ScriptSection(BaseModel):
+    heading: str
+    spoken: str = Field(description="The exact words to say")
+    broll: list[str] = Field(default_factory=list)
+    on_screen_text: list[str] = Field(default_factory=list)
+    beat: Literal["hook", "turn", "body", "pattern_interrupt", "retention_beat", "payoff", "outro"]
+
+
+class ScriptOut(BaseModel):
+    VERSION: ClassVar[str] = "1"
+    title_working: str
+    sections: list[ScriptSection] = Field(min_length=3)
+    estimated_minutes: float
+
+
+class PackagePair(BaseModel):
+    title: str = Field(max_length=100)
+    thumbnail_text: str = Field(max_length=40)
+
+
+class PackageOut(BaseModel):
+    VERSION: ClassVar[str] = "1"
+    pairs: list[PackagePair] = Field(min_length=3, max_length=3)
+    thumbnail_brief: str = Field(description="Subject, expression, composition, colours, what the text says")
+
+
+class SeoOut(BaseModel):
+    VERSION: ClassVar[str] = "1"
+    description: str
+    tags: list[str] = Field(max_length=15)
+    pinned_comment: str
+    target_queries: list[str] = Field(min_length=3, max_length=3)
+
+
+class ShortPick(BaseModel):
+    window: int = Field(description="Index of the candidate window you picked")
+    start: float
+    end: float
+    first_line: str = Field(description="A new opening line, spoken or on screen, that makes it self-contained")
+    reason: str
+
+
+class ShortPicksOut(BaseModel):
+    VERSION: ClassVar[str] = "1"
+    picks: list[ShortPick] = Field(max_length=5)
+
+
+class ShortMeta(BaseModel):
+    title: str = Field(max_length=100)
+    description: str
+
+
+class ShortMetaOut(BaseModel):
+    VERSION: ClassVar[str] = "1"
+    shorts: list[ShortMeta]
