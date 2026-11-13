@@ -161,3 +161,41 @@ def test_audio_is_decoded_to_16k_mono_floats_for_whisper(fixture_video):
 
     samples = decode_16k_mono(fixture_video)
     assert str(samples.dtype) == "float32" and abs(len(samples) - 10 * 16000) < 2000 and abs(samples).max() > 0.1
+
+
+def test_subtitle_words_are_grouped_and_timed_inside_each_spoken_line():
+    from ytstudio.adapters.media import chunk_words, subtitle_words
+
+    assert chunk_words([f"w{i}" for i in range(9)]) == [["w0", "w1", "w2", "w3", "w4"], ["w5", "w6", "w7", "w8"]]
+    assert chunk_words([]) == []
+    words = subtitle_words(
+        [{"text": "one two three four", "start": 1.0, "end": 3.0}, {"text": "five", "start": 4.0, "end": 5.0}]
+    )
+    assert [w[3][w[2]] for w in words] == ["one", "two", "three", "four", "five"]
+    assert words[0][0] == 1.0 and abs(words[3][1] - 3.0) < 0.01 and words[4][0] == 4.0
+
+
+@needs_ffmpeg
+def test_subtitle_video_is_white_with_black_text_in_the_right_shape(fixture_video, tmp_path):
+    from PIL import Image
+
+    from ytstudio.adapters.media import FFmpegMediaProcessor, subtitle_frame
+
+    m = FFmpegMediaProcessor()
+    units = [
+        {"text": "Stop overpaying rent today", "start": 0.3, "end": 2.5},
+        {"text": "Ask for receipts", "start": 3.0, "end": 4.5},
+    ]
+    for vertical, size in ((True, (1080, 1920)), (False, (1920, 1080))):
+        out = tmp_path / f"v{vertical}.mp4"
+        m.render_subtitle_video(units, fixture_video, vertical, out)
+        streams = probe(out)["streams"]
+        video = next(s for s in streams if s["codec_type"] == "video")
+        assert (video["width"], video["height"]) == size and any(s["codec_type"] == "audio" for s in streams)
+        assert abs(float(probe(out)["format"]["duration"]) - m.duration(fixture_video)) < 0.6
+    frame = tmp_path / "f.png"
+    subtitle_frame(["Stop", "overpaying", "rent"], 1, (1080, 1920), frame)
+    img = Image.open(frame).convert("RGB")
+    colours = {c for _, c in img.getcolors(maxcolors=100000)}
+    assert img.getpixel((2, 2)) == (255, 255, 255) and (20, 20, 20) in colours  # white screen, black text
+    assert any(c[0] > 200 and c[1] < 90 for c in colours)  # the word being said is red

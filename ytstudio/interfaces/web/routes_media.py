@@ -181,11 +181,13 @@ def upload_short(
 @router.get("/files/asset/{asset_id}/{what}")
 def asset_file(asset_id: int, what: str, download: int = 0, p: Page = Depends(page)) -> Response:
     a: dict[str, Any] | None = queries().asset(p.user.id, asset_id)
-    key = (a or {}).get("data", {}).get({"video": "video_key", "cover": "cover_key"}.get(what, ""))
+    key = (
+        (a or {}).get("data", {}).get({"video": "video_key", "cover": "cover_key", "audio": "audio_key"}.get(what, ""))
+    )
     if not key:
         raise HTTPException(404)
     path = get_container().storage.get(key)
-    name = f"short-{asset_id}{path.suffix}"
+    name = f"{(a or {}).get('kind', 'file')}-{asset_id}{path.suffix}"
     return FileResponse(
         path, filename=name if download else None, content_disposition_type="attachment" if download else "inline"
     )

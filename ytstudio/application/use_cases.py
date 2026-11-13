@@ -392,8 +392,8 @@ EDITABLE = {
 class Review:
     """Everything generated lands here as "needs review". Approve, edit, discard, regenerate. Never publish."""
 
-    def __init__(self, uow: UowFactory, runner: PipelineRunner, clock: Clock):
-        self.uow, self.runner, self.clock = uow, runner, clock
+    def __init__(self, uow: UowFactory, runner: PipelineRunner, clock: Clock, storage: Storage):
+        self.uow, self.runner, self.clock, self.storage = uow, runner, clock, storage
 
     def set_status(self, user_id: int, asset_id: int, status: AssetStatus) -> None:
         with self.uow() as uow:
@@ -408,8 +408,16 @@ class Review:
             a = uow.assets.get(asset_id, user_id)
             if a.kind not in ("idea", "script", "package", "seo"):
                 raise PermanentError(f"A {a.kind} cannot be deleted.")
+            files = [
+                k
+                for x in (a, *uow.assets.children(asset_id, user_id))
+                for k in (x.data.get("video_key"), x.data.get("audio_key"))
+                if k
+            ]
             uow.assets.delete(asset_id, user_id)
             uow.commit()
+        for key in files:  # the voice-over and video made from a deleted script go with it
+            self.storage.delete(key)
         return a
 
     def edit(self, user_id: int, asset_id: int, changes: dict[str, Any]) -> None:
@@ -465,6 +473,18 @@ class Review:
             )
             uow.commit()
         return added
+
+    def make_video(self, user_id: int, script_asset_id: int, voice: str = "") -> StartResult:
+        """Voice-over and subtitle video for one script. Pressing it again makes a new one that replaces the old."""
+        with self.uow() as uow:
+            a = uow.assets.get(script_asset_id, user_id)
+        if a.kind != "script":
+            raise PermanentError("Only a script can be turned into a video.")
+        inputs: dict[str, Any] = {"asset_id": a.id}
+        if voice in ("en", "hi"):
+            inputs["voice"] = voice
+        key = f"{a.channel_id}:video:{a.id}:{int(self.clock.now().timestamp())}"
+        return self.runner.start(user_id, a.channel_id, "script_video", key, inputs)
 
     def develop(self, user_id: int, idea_asset_id: int) -> StartResult:
         with self.uow() as uow:

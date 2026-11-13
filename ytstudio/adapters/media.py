@@ -95,6 +95,55 @@ def caption_frame(words: list[str], current: int, path: Path) -> None:
     img.save(path)
 
 
+VIDEO_SIZES = {True: (1080, 1920), False: (1920, 1080)}  # vertical (Shorts) or landscape
+INK, ACCENT, PAPER = (20, 20, 20), (229, 50, 45), (255, 255, 255)
+
+
+def chunk_words(words: list[str], size: int = 8) -> list[list[str]]:
+    """Even groups of at most `size` words, so a subtitle never shows a long sentence at once."""
+    if not words:
+        return []
+    groups = -(-len(words) // size)
+    each = -(-len(words) // groups)
+    return [words[i : i + each] for i in range(0, len(words), each)]
+
+
+def subtitle_words(units: list[dict[str, Any]]) -> list[tuple[float, float, int, list[str]]]:
+    """(start, end, index of the word being said, words on screen) for every word of every spoken line.
+    A line's time is shared out by word length, one subtitle chunk after another."""
+    cues: list[Cue] = []
+    for u in units:
+        chunks = chunk_words(str(u["text"]).split())
+        total = sum(len(w) + 1 for c in chunks for w in c) or 1
+        t = float(u["start"])
+        for c in chunks:
+            dt = (float(u["end"]) - float(u["start"])) * sum(len(w) + 1 for w in c) / total
+            cues.append(Cue(t, t + dt, " ".join(c)))
+            t += dt
+    return words_timed(cues, 0.0, max((c.end for c in cues), default=0.0) + 1)
+
+
+def subtitle_frame(words: list[str], current: int, size: tuple[int, int], path: Path) -> None:
+    """Black text on a white screen; the word being said is red."""
+    width, height = size
+    vertical = height > width
+    img = Image.new("RGB", size, PAPER)
+    d = ImageDraw.Draw(img)
+    f = _font_for(" ".join(words), 92 if vertical else 84)
+    lines = textwrap.wrap(" ".join(words), width=16 if vertical else 30) or [""]
+    step = 118 if vertical else 108
+    y = (height - len(lines) * step) // 2
+    k = 0
+    for line in lines:
+        x = (width - d.textlength(line, font=f)) / 2
+        for w in line.split():
+            d.text((x, y), w, font=f, fill=ACCENT if k == current else INK)
+            x += d.textlength(w + " ", font=f)
+            k += 1
+        y += step
+    img.save(path, compress_level=1)
+
+
 class FFmpegMediaProcessor:
     def duration(self, path: Path) -> float:
         p = subprocess.run(
@@ -167,6 +216,45 @@ class FFmpegMediaProcessor:
                 "-shortest",
                 str(part),
             )
+            os.replace(part, out)
+
+    def encode_audio(self, wav: Path, out: Path) -> None:
+        part = out.with_name(f".{out.name}.part.mp3")
+        _ffmpeg("-i", str(wav), "-c:a", "libmp3lame", "-q:a", "3", str(part), timeout=600)
+        os.replace(part, out)
+
+    def render_subtitle_video(self, units: list[dict[str, Any]], audio: Path, vertical: bool, out: Path) -> None:
+        """White screen, black subtitles that follow the voice. One picture per spoken word, held until the next."""
+        size = VIDEO_SIZES[vertical]
+        words = subtitle_words(units)
+        if not words:
+            raise PermanentError("There are no words to show as subtitles.")
+        total = self.duration(audio)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory() as d:
+            tmp = Path(d)
+            blank = tmp / "blank.png"
+            Image.new("RGB", size, PAPER).save(blank, compress_level=1)
+            lines = ["ffconcat version 1.0"]
+            if words[0][0] > 0.02:
+                lines += [f"file '{blank}'", f"duration {words[0][0]:.3f}"]
+            last = blank
+            for n, (t0, _t1, idx, ws) in enumerate(words):
+                nxt = words[n + 1][0] if n + 1 < len(words) else max(total, t0 + 0.1)
+                last = tmp / f"w{n:05d}.png"
+                subtitle_frame(ws, idx, size, last)
+                lines += [f"file '{last}'", f"duration {max(nxt - t0, 0.04):.3f}"]
+            lines.append(f"file '{last}'")
+            concat = tmp / "subs.ffconcat"
+            concat.write_text("\n".join(lines) + "\n")
+            part = out.with_name(f".{out.name}.part.mp4")
+            _ffmpeg(
+                "-f", "concat", "-safe", "0", "-i", str(concat), "-i", str(audio),
+                "-vf", "fps=30,format=yuv420p",
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "24",
+                "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", "-shortest",
+                str(part),
+            )  # fmt: skip
             os.replace(part, out)
 
     def frame(self, src: Path, at: float, out: Path) -> None:

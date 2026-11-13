@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 from functools import cached_property
 from typing import Any
 
-from ytstudio.application import steps_daily, steps_shorts  # noqa: F401  (registers the steps)
+from ytstudio.application import steps_daily, steps_shorts, steps_video  # noqa: F401  (registers the steps)
 from ytstudio.application.pipeline import PipelineRunner
 from ytstudio.application.use_cases import Accounts, Events, Profiles, Review, Scheduling, Shorts, Sync
 from ytstudio.config import Settings, get_settings
@@ -209,6 +209,7 @@ class Container:
     @cached_property
     def media(self) -> Any:
         from ytstudio.adapters.media import FasterWhisperTranscriber, FFmpegMediaProcessor, PillowImageRenderer
+        from ytstudio.adapters.narrator import PiperNarrator
 
         return self._pick(
             "media",
@@ -216,6 +217,9 @@ class Container:
                 "media": FFmpegMediaProcessor(),
                 "images": PillowImageRenderer(),
                 "transcriber": FasterWhisperTranscriber(self.s.whisper_model),
+                "narrator": PiperNarrator(
+                    self.s.media_dir / "voices", {"en": self.s.tts_voice_en, "hi": self.s.tts_voice_hi}
+                ),
             },
         )
 
@@ -247,6 +251,7 @@ class Container:
             edl=sc["edl"],
             retention=sc["retention"],
             transcriber=m["transcriber"],
+            narrator=m["narrator"],
             media=m["media"],
             images=m["images"],
             storage=self.storage,
@@ -293,7 +298,7 @@ class Container:
 
     @cached_property
     def review(self) -> Review:
-        return Review(self.uow, self.runner, self.clock)
+        return Review(self.uow, self.runner, self.clock, self.storage)
 
     @cached_property
     def shorts(self) -> Shorts:

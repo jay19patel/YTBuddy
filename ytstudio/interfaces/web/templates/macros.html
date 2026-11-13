@@ -33,7 +33,7 @@
 </div>
 {%- endmacro %}
 
-{% set RUN_TITLES = {"daily": "Daily brief", "develop": "Writing the script", "shorts": "Making Shorts"} %}
+{% set RUN_TITLES = {"daily": "Daily brief", "develop": "Writing the script", "shorts": "Making Shorts", "script_video": "Making the video"} %}
 {% set STEP_INFO = {
   "sync_channel": ("Sync channel stats", "Reads your latest channel numbers from YouTube."),
   "fetch_performance": ("Read your recent videos", "Pulls views and retention for your last uploads."),
@@ -53,6 +53,8 @@
   "make_covers": ("Make covers", "Draws a cover image for each Short."),
   "write_short_meta": ("Titles and descriptions", "The AI names each Short."),
   "queue_shorts": ("Add to review", "Puts the Shorts in your review list."),
+  "narrate_script": ("Create the voice", "Piper reads the script aloud on this computer. The first time it downloads the voice (about 63 MB)."),
+  "render_script_video": ("Draw the subtitles and make the video", "Draws each subtitle and joins them with the voice. A long script can take a few minutes."),
 } %}
 
 {% macro stepper(run) -%}

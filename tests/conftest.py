@@ -118,7 +118,12 @@ def container(db_url: str, yt: fakes.FakeYouTube, tmp_path: Path) -> Container:
         notifier=fakes.RecordingNotifier(),
         dispatcher=dispatcher,
         storage=LocalStorage(tmp_path / "media"),
-        media={"media": fakes.FakeMedia(), "images": fakes.FakeImages(), "transcriber": fakes.FakeTranscriber()},
+        media={
+            "media": fakes.FakeMedia(),
+            "images": fakes.FakeImages(),
+            "transcriber": fakes.FakeTranscriber(),
+            "narrator": fakes.FakeNarrator(),
+        },
         prompts=prompts,
     )
     set_container(c)

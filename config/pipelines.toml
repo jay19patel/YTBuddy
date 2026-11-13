@@ -36,5 +36,9 @@ steps = [
   "queue_shorts",          # io: review queue + notify
 ]
 
+# Turn a script into a video: Piper reads it aloud, then a white screen with black subtitles is drawn to match.
+[pipelines.script_video]
+steps = ["narrate_script", "render_script_video"]
+
 [trends]
 providers = ["most_popular", "niche_search", "custom_topics"]

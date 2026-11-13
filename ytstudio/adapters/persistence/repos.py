@@ -538,6 +538,10 @@ class SqlAssets(_Repo):
             for r in self.s.exec(select(t.AssetRow).where(t.AssetRow.run_id == run_id).order_by(col(t.AssetRow.id)))
         ]
 
+    def children(self, asset_id: int, user_id: int) -> list[Asset]:
+        q = select(t.AssetRow).where(t.AssetRow.parent_id == asset_id, t.AssetRow.user_id == user_id)
+        return [self._dom(r) for r in self.s.exec(q)]
+
     def delete(self, asset_id: int, user_id: int) -> int:
         """Delete an asset and what hangs under it (an idea's script, package and SEO). Returns how many went."""
         row = self.s.get(t.AssetRow, asset_id)

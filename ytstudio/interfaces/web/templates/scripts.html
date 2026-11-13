@@ -23,7 +23,7 @@
   {% for s in scripts %}{% set d = s.data %}
     <article class="card">
       <div class="section-head"><h3><a href="/assets/{{ s.id }}">{{ s.title }}</a></h3>{{ m.review_actions(s, "/scripts?format=" ~ fmt) }}</div>
-      <div class="chips">{{ m.chips(fmt, d | is_manual) }}</div>
+      <div class="chips">{{ m.chips(fmt, d | is_manual) }}{% if d.video_key %}<span class="chip auto"><i data-lucide="video"></i>Video ready</span>{% endif %}</div>
       {% if fmt == "short" %}
         <p class="muted">{{ s.created_at.strftime("%-d %b %Y") }} · about {{ (d.script.estimated_minutes * 60) | round | int }} seconds · hook panel score {{ d.hook.panel_score }}</p>
         <pre class="copyable">{{ d.hook.hook }}</pre>
