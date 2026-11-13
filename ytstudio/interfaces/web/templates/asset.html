@@ -9,11 +9,12 @@
   <div class="section-head"><h2>Review</h2>{{ m.review_actions(a, "/assets/" ~ a.id) }}</div>
 
   {% if a.kind == "idea" %}
+    {% set fmt = d | asset_format %}
+    <div class="chips">{{ m.chips(fmt, d | is_manual) }}</div>
     <dl class="kv">
       <dt>Angle</dt><dd>{{ d.angle }}</dd>
       <dt>Why now</dt><dd>{{ d.why_now }}{% for r in d.outlier_refs %} <a href="https://youtu.be/{{ r }}" target="_blank" rel="noopener">[{{ loop.index }}]</a>{% endfor %}</dd>
       <dt>Different</dt><dd>{{ d.difference }}</dd>
-      <dt>Effort</dt><dd>{{ d.effort }}</dd>
     </dl>
     {% if developed.script %}
       <div class="next">
@@ -29,8 +30,13 @@
     {% else %}
       <div class="next">
         <h3>Next step: write the script</h3>
+        {% if fmt == "short" %}
+        <p class="muted">This writes a Shorts script under a minute long, with a title and description. It takes a few seconds.</p>
+        <div class="actions">{{ m.post("/ideas/" ~ a.id ~ "/develop", "Write the Short script", "btn small") }}</div>
+        {% else %}
         <p class="muted">This writes the script, three title options with thumbnail text, and the SEO text for this idea. It takes about a minute.</p>
         <div class="actions">{{ m.post("/ideas/" ~ a.id ~ "/develop", "Write script, titles and SEO", "btn small") }}</div>
+        {% endif %}
       </div>
     {% endif %}
     {% for kind, x in developed.items() %}<p><a href="/assets/{{ x.id }}">{{ kind | capitalize }}</a> <span class="tag {{ x.status }}">{{ x.status | replace("_", " ") }}</span></p>{% endfor %}
@@ -43,6 +49,11 @@
     </details>
 
   {% elif a.kind == "script" %}
+    <div class="chips">{{ m.chips(d | asset_format, d | is_manual) }}</div>
+    {% if d.format == "short" %}
+      <h3>Title <button class="copy" type="button" data-copy="{{ d.title }}">Copy</button></h3><p>{{ d.title }}</p>
+      <h3>Description <button class="copy" type="button" data-copy="{{ d.description }}">Copy</button></h3><pre class="copyable">{{ d.description }}</pre>
+    {% endif %}
     <h3>Hooks <span class="muted">(hook panel score: a heuristic from the vendored hookscore tool, not a prediction)</span></h3>
     <ol>{% for h in d.hooks %}<li><span class="score">{{ h.panel_score }}</span> {{ h.hook }} <span class="muted">{{ h.formula }}; weakest {{ h.weakest | lower }}: {{ h.fix }}</span></li>{% endfor %}</ol>
     <div class="row">

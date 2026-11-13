@@ -44,8 +44,8 @@ class IdeaOut(BaseModel):
 
 
 class IdeasOut(BaseModel):
-    VERSION: ClassVar[str] = "1"
-    ideas: list[IdeaOut] = Field(min_length=5, max_length=5)
+    VERSION: ClassVar[str] = "2"
+    ideas: list[IdeaOut] = Field(min_length=1, max_length=10, description="Exactly the number asked for, best first")
 
 
 class HooksOut(BaseModel):
@@ -66,6 +66,15 @@ class ScriptOut(BaseModel):
     title_working: str
     sections: list[ScriptSection] = Field(min_length=3)
     estimated_minutes: float
+
+
+class ShortScriptOut(BaseModel):
+    VERSION: ClassVar[str] = "1"
+    hook: str = Field(description="The first spoken line, said in the first two seconds")
+    sections: list[ScriptSection] = Field(min_length=2, max_length=5)
+    title: str = Field(max_length=100)
+    description: str = Field(description="Two short lines, no hashtags")
+    estimated_seconds: int = Field(description="Spoken length, at most 58")
 
 
 class PackagePair(BaseModel):

@@ -77,8 +77,11 @@ class Queries:
             return None
         brief = briefs[0]
         ideas = sorted(self.assets(user_id, channel_id, ["idea"], parent_id=brief["id"]), key=lambda a: a["id"])
-        sections = self.assets(user_id, channel_id, ["script", "package", "seo"], run_id=brief["run_id"])
-        return {"brief": brief, "ideas": ideas, "sections": {a["kind"]: a for a in sections}}
+        made = self.assets(user_id, channel_id, ["script", "package", "seo"], run_id=brief["run_id"])
+        by_idea: dict[int, dict[str, Any]] = {}
+        for a in sorted(made, key=lambda x: x["id"]):
+            by_idea.setdefault(a["parent_id"], {})[a["kind"]] = a
+        return {"brief": brief, "ideas": ideas, "made": by_idea}
 
     def developed(self, user_id: int, channel_id: str, idea_id: int) -> dict[str, Any]:
         rows = self.assets(user_id, channel_id, ["script", "package", "seo"], parent_id=idea_id)

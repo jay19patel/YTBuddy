@@ -22,6 +22,7 @@ from ytstudio.adapters.persistence.web_sessions import WebSessions
 from ytstudio.config import get_settings
 from ytstudio.container import get_container
 from ytstudio.domain.errors import DomainError, NotFound
+from ytstudio.domain.models import format_of
 from ytstudio.logging_setup import request_id_var, setup_logging
 
 HERE = Path(__file__).parent
@@ -83,6 +84,17 @@ def short(n: float) -> str:
 templates = Jinja2Templates(directory=HERE / "templates")
 # A changed file gets a new URL, so a browser never keeps serving the old CSS or JS.
 templates.env.globals["static_v"] = str(int(max(f.stat().st_mtime for f in (HERE / "static").glob("*.*"))))
+
+
+def asset_format(d: dict[str, Any]) -> str:
+    """ "long" or "short" for an idea or a script (scripts keep their idea inside)."""
+    return format_of(d if "format" in d or "effort" in d else d.get("idea") or {})
+
+
+templates.env.filters["asset_format"] = asset_format
+templates.env.filters["is_manual"] = lambda d: (
+    d.get("source") == "manual" or (d.get("idea") or {}).get("source") == "manual"
+)
 templates.env.filters["num"] = lambda n, digits=0: f"{float(n or 0):,.{digits}f}"
 templates.env.filters["short"] = short
 templates.env.filters["dur"] = lambda s: f"{int(s or 0) // 60}:{int(s or 0) % 60:02d}"

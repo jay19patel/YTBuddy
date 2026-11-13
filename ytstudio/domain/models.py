@@ -128,6 +128,11 @@ class Asset:
     parent_id: int | None = None
 
 
+def format_of(data: dict[str, Any]) -> str:
+    """ "short" or "long". Ideas and scripts made before the format was stored are told apart by their effort."""
+    return str(data.get("format") or ("short" if data.get("effort") == "short" else "long"))
+
+
 @dataclass
 class Run:
     id: int

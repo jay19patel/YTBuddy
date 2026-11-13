@@ -23,9 +23,10 @@ def test_schedule_time_uses_the_channel_time_zone_and_must_be_in_the_future():
 def test_add_own_idea_then_develop_it_into_a_script(container, user_and_channel):
     user_id, channel = user_and_channel
     idea = container.review.add_idea(
-        user_id, channel, "  Build an AI app\nwith FastAPI ", "Keep it beginner friendly", "short"
+        user_id, channel, "  Build an AI app\nwith FastAPI ", "Keep it beginner friendly", format="long"
     )
     assert idea.title == "Build an AI app with FastAPI" and idea.data["source"] == "manual"
+    assert idea.data["format"] == "long"
     run = container.review.develop(user_id, idea.id)
     with container.uow() as uow:
         made = {a.kind: a for a in uow.assets.for_run(run.run_id)}
@@ -36,6 +37,23 @@ def test_add_own_idea_then_develop_it_into_a_script(container, user_and_channel)
         container.review.regenerate(user_id, idea.id)
     with pytest.raises(PermanentError, match="Write the idea"):
         container.review.add_idea(user_id, channel, "   ")
+
+
+def test_a_short_idea_becomes_a_short_script_with_title_and_description(container, user_and_channel):
+    user_id, channel = user_and_channel
+    idea = container.review.add_idea(user_id, channel, "Rent trick", "One point only", format="short")
+    assert idea.data["format"] == "short" and idea.data["effort"] == "short"
+    run = container.review.develop(user_id, idea.id)
+    with container.uow() as uow:
+        made = {a.kind: a for a in uow.assets.for_run(run.run_id)}
+    assert set(made) == {"script"} and made["script"].parent_id == idea.id  # no package or SEO for a Short
+    data = made["script"].data
+    assert data["format"] == "short" and data["title"] and data["description"] and data["hook"]["hook"]
+    regen = container.review.regenerate(user_id, made["script"].id)
+    with container.uow() as uow:
+        again = uow.assets.get(made["script"].id, user_id)
+    assert uow and regen.run_id and again.data["format"] == "short" and len(again.data["history"]) == 1
+    assert again.title == "Rent trick"  # the idea's name, not the model's new Short title
 
 
 def test_ideas_page_form_adds_an_idea_for_this_channel_only(container, user_and_channel, db_url):
@@ -96,3 +114,28 @@ def test_schedule_in_the_past_is_refused_and_nothing_is_uploaded(container, user
     client, token = logged_in(db_url, user_and_channel[0])
     r = upload(client, token, publish_at="2020-01-01T10:00")
     assert r.status_code == 400 and "at least 10 minutes" in r.text and yt.uploaded == []
+
+
+def test_scripts_and_ideas_pages_split_long_videos_from_shorts(container, user_and_channel, db_url):
+    from tests.test_characterization import logged_in
+
+    user_id, channel = user_and_channel
+    container.scheduling.run_now(user_id, channel)  # a daily run: 2 long + 5 Shorts, every idea written out
+    client, token = logged_in(db_url, user_id)
+    for path in ("/scripts", "/ideas"):
+        long_page, short_page = client.get(f"{path}?format=long").text, client.get(f"{path}?format=short").text
+        assert long_page.count('<article class="card') == 2 and short_page.count('<article class="card') == 5, path
+        assert 'aria-current="page"><i data-lucide="clapperboard"></i>Long videos<span class="n">2</span>' in long_page
+        assert 'Shorts<span class="n">5</span>' in long_page and "Auto</span>" in long_page, path
+        assert client.get(path).text.count('<article class="card') == 2  # long videos first
+    assert "Open the script" in client.get("/ideas?format=short").text
+    today = client.get("/today").text
+    assert "Long videos today" in today and "Shorts today" in today and today.count("Open the script") == 7
+    page = client.post(
+        "/ideas/new",
+        data={"csrf": token, "title": "My short", "format": "short", "mode": "save"},
+        follow_redirects=False,
+    )
+    assert page.headers["location"].startswith("/ideas?format=short")
+    mine = client.get("/ideas?format=short").text
+    assert "My short" in mine and "Manual</span>" in mine and "Write the Short script" in mine

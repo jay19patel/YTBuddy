@@ -65,19 +65,25 @@ def test_daily_pipeline_end_to_end(container, user_and_channel):
 
     # ideas: invented references are removed
     ideas = out["generate_ideas"]["ideas"]
-    assert len(ideas) == 5 and ideas[0]["outlier_refs"] == ["t1"] and ideas[0]["builds_on"] == ["own1"]
+    assert [i["format"] for i in ideas] == ["long"] * 2 + ["short"] * 5 and [i["rank"] for i in ideas] == list(
+        range(1, 8)
+    )
+    assert ideas[0]["outlier_refs"] == ["t1"] and ideas[0]["builds_on"] == ["own1"] and ideas[0]["source"] == "auto"
+    assert all(i["effort"] == "short" for i in ideas[2:])
 
-    # script: 5 hooks scored by the vendored hook panel, best first, best one opens the script
-    sc = out["write_script"]
+    # every idea is developed: long = script + package + SEO, short = one script with its own title and description
+    developed = out["develop_ideas"]["developed"]
+    assert [d["idea"]["rank"] for d in developed] == list(range(1, 8))
+    long_one, short_one = developed[0], developed[2]
+    sc = long_one["script"]  # 5 hooks scored by the vendored hook panel, best first, best one opens the script
     assert len(sc["hooks"]) == 5 and sc["hook"] == sc["hooks"][0]
     assert sc["hooks"][0]["panel_score"] >= sc["hooks"][-1]["panel_score"]
-
-    # package pairs are linted
-    assert all("score" in p["lint"] for p in out["build_package"]["pairs"])
+    assert all("score" in p["lint"] for p in long_one["package"]["pairs"]) and "seo" in long_one
+    assert short_one["script"]["format"] == "short" and short_one["script"]["title"] and "package" not in short_one
 
     # everything lands in review; nothing is approved or published automatically
     kinds = sorted(a.kind for a in assets(container, run.id))
-    assert kinds == ["brief", "idea", "idea", "idea", "idea", "idea", "package", "script", "seo"]
+    assert kinds == ["brief"] + ["idea"] * 7 + ["package"] * 2 + ["script"] * 7 + ["seo"] * 2
     assert all(a.status == "needs_review" for a in assets(container, run.id))
     events = [e for _, e in container.events.notifier.sent]
     assert any(isinstance(e, BriefReady) for e in events)

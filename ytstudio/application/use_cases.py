@@ -22,6 +22,7 @@ from ytstudio.domain.models import (
     Schedule,
     SyncSettings,
     User,
+    format_of,
     idem_key,
 )
 from ytstudio.domain.schedule import local_day, next_run
@@ -431,18 +432,21 @@ class Review:
             raise PermanentError(f"{a.kind} cannot be regenerated")
         if a.data.get("source") == "manual":  # regenerating would replace your words with a model's idea
             raise PermanentError("Your own idea is not regenerated. Edit it, or develop it into a script.")
-        step = REGEN_STEP[a.kind]
+        step = "write_short_script" if a.kind == "script" and format_of(a.data) == "short" else REGEN_STEP[a.kind]
         inputs: dict[str, Any] = {"regenerate": True, "asset_id": a.id, "target_step": step, "seed_outputs": seed}
         if "idea" in a.data:
             inputs["idea"] = a.data["idea"]
         key = f"{a.channel_id}:regen:{a.id}:{int(self.clock.now().timestamp())}"
         return self.runner.start(user_id, a.channel_id, "regen", key, inputs, steps=[step, "save_section"])
 
-    def add_idea(self, user_id: int, channel_id: str, title: str, details: str = "", effort: str = "standard") -> Asset:
+    def add_idea(
+        self, user_id: int, channel_id: str, title: str, details: str = "", effort: str = "standard", format: str = ""
+    ) -> Asset:
         """An idea you typed yourself, for this channel. Develop it into a script like any other idea."""
         title = " ".join(title.split())[:200]
         if not title:
             raise PermanentError("Write the idea first.")
+        fmt = format if format in ("long", "short") else ("short" if effort == "short" else "long")
         idea = {
             "title": title,
             "angle": details.strip()[:2000],
@@ -450,7 +454,8 @@ class Review:
             "outlier_refs": [],
             "difference": "",
             "builds_on": [],
-            "effort": effort if effort in ("short", "standard", "anchor") else "standard",
+            "effort": "short" if fmt == "short" else (effort if effort in ("standard", "anchor") else "standard"),
+            "format": fmt,
             "source": "manual",
         }
         with self.uow() as uow:
@@ -466,8 +471,9 @@ class Review:
             a = uow.assets.get(idea_asset_id, user_id)
         if a.kind != "idea":
             raise PermanentError("only ideas can be developed")
+        pipeline = "develop_short" if format_of(a.data) == "short" else "develop"
         return self.runner.start(
-            user_id, a.channel_id, "develop", f"{a.channel_id}:develop:{a.id}", {"idea": a.data, "idea_asset_id": a.id}
+            user_id, a.channel_id, pipeline, f"{a.channel_id}:develop:{a.id}", {"idea": a.data, "idea_asset_id": a.id}
         )
 
 

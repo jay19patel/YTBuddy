@@ -262,6 +262,17 @@ def llm_responses() -> dict[str, Any]:
                 {"heading": "Payoff", "spoken": "Do this.", "beat": "payoff", "broll": ["receipts"]},
             ],
         },
+        "short_script": {
+            "hook": "Stop overpaying rent, do this instead.",
+            "sections": [
+                {"heading": "Hook", "spoken": "Stop overpaying rent, do this instead.", "beat": "hook"},
+                {"heading": "Point", "spoken": "Ask for the receipts.", "beat": "body", "broll": ["receipts"]},
+                {"heading": "Payoff", "spoken": "That saved me twelve thousand.", "beat": "payoff"},
+            ],
+            "title": "Stop overpaying rent",
+            "description": "One trick that cut my rent.\nTry it this month.",
+            "estimated_seconds": 35,
+        },
         "package": {
             "pairs": [
                 {"title": "I tracked rent for 90 days", "thumbnail_text": "₹12,000 GONE"},

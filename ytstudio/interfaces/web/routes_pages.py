@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse, RedirectResponse, Response
 from ytstudio.container import get_container
 from ytstudio.domain.metrics import median_views
 from ytstudio.domain.models import AssetStatus, RetentionPoint, Video
-from ytstudio.interfaces.web.app import Page, back, csrf, page, queries, render
+from ytstudio.interfaces.web.app import Page, asset_format, back, csrf, page, queries, render
 from ytstudio.interfaces.web.routes_auth import cookie
 
 router = APIRouter()
@@ -49,13 +49,23 @@ def run_now(p: Page = Depends(csrf)) -> Response:
     return started("/today", get_container().scheduling.run_now(p.user.id, p.channel_id))
 
 
+def by_format(rows: list[dict[str, Any]], fmt: str) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    """Rows of one type, and how many of each type there are (for the Long videos / Shorts toggle)."""
+    counts = {"long": 0, "short": 0}
+    for r in rows:
+        counts[asset_format(r["data"])] += 1
+    return [r for r in rows if asset_format(r["data"]) == fmt], counts
+
+
 @router.get("/ideas")
 def ideas(request: Request, p: Page = Depends(page)) -> Response:
     if not p.active:
         return render(p, "empty.html")
     status = request.query_params.get("status") or None
-    rows = queries().assets(p.user.id, p.channel_id, ["idea"], status=status)
-    return render(p, "ideas.html", ideas=rows, status=status)
+    fmt = "short" if request.query_params.get("format") == "short" else "long"
+    rows, counts = by_format(queries().assets(p.user.id, p.channel_id, ["idea"], status=status), fmt)
+    scripted = {r["parent_id"]: r["id"] for r in reversed(queries().assets(p.user.id, p.channel_id, ["script"]))}
+    return render(p, "ideas.html", ideas=rows, status=status, fmt=fmt, counts=counts, scripted=scripted)
 
 
 @router.post("/ideas/new")
@@ -63,15 +73,16 @@ def new_idea(
     title: str = Form(""),
     details: str = Form(""),
     effort: str = Form("standard"),
+    format: str = Form(""),
     mode: str = Form("save"),
     p: Page = Depends(csrf),
 ) -> Response:
     c = get_container()
-    idea = c.review.add_idea(p.user.id, p.channel_id, title, details, effort)
+    idea = c.review.add_idea(p.user.id, p.channel_id, title, details, effort, format)
     assert idea.id is not None
     if mode == "script":  # write the script right away
         return started(f"/assets/{idea.id}", c.review.develop(p.user.id, idea.id))
-    return back("/ideas", "idea_added")
+    return back(f"/ideas?format={asset_format(idea.data)}", "idea_added")
 
 
 @router.get("/scripts")
@@ -79,8 +90,9 @@ def scripts(request: Request, p: Page = Depends(page)) -> Response:
     if not p.active:
         return render(p, "empty.html")
     status = request.query_params.get("status") or None
-    rows = queries().assets(p.user.id, p.channel_id, ["script"], status=status)
-    return render(p, "scripts.html", scripts=rows, status=status)
+    fmt = "short" if request.query_params.get("format") == "short" else "long"
+    rows, counts = by_format(queries().assets(p.user.id, p.channel_id, ["script"], status=status), fmt)
+    return render(p, "scripts.html", scripts=rows, status=status, fmt=fmt, counts=counts)
 
 
 @router.post("/ideas/{idea_id}/develop")

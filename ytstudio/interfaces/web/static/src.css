@@ -157,6 +157,7 @@
   .panel { @apply bg-surface border border-line rounded-card shadow-card p-6; }
   .panel > * + * { @apply mt-3; }
   .panel > h3, .panel > .split, .panel > .table-wrap, .panel > .cards { @apply mt-4; }
+  .panel > :first-child { @apply mt-0; }
   .panel + .panel, .stats + .panel, .actions + .panel, .panel + .desk, .desk + .panel { @apply mt-5; }
   .narrow { @apply max-w-[560px]; }
   .section-head { @apply flex flex-wrap items-center justify-between gap-3 mb-3; }
@@ -268,6 +269,26 @@
   .progress div { @apply h-full w-0 bg-brand; transition: width .2s; }
   .uploading .progress { display: block; }
   #status { @apply text-sm text-muted mt-2 min-h-6; }
+
+  /* Idea and script types */
+  .chips { @apply flex flex-wrap gap-1.5 mb-2; }
+  .chip { @apply inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-sunken text-muted; }
+  .chip svg { @apply size-3.5; }
+  .chip.long { color: var(--info); background: color-mix(in srgb, var(--info) 12%, var(--surface)); }
+  .chip.short { color: var(--brand); background: color-mix(in srgb, var(--brand) 12%, var(--surface)); }
+  .chip.auto { color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, var(--surface)); }
+  .chip.manual { color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, var(--surface)); }
+  .lead-ico { @apply inline-block size-[18px] align-[-3px] mr-2 text-muted; }
+  .idea-card h3 a { @apply no-underline hover:underline; }
+  .toolbar.between { @apply items-center justify-between; }
+  .toolbar.between form { @apply m-0; }
+  .seg { @apply inline-flex p-1 rounded-full bg-sunken border border-line; }
+  .seg a { @apply inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-medium text-muted no-underline; }
+  .seg a svg { @apply size-4; }
+  .seg a:hover { @apply text-ink; }
+  .seg a[aria-current] { @apply bg-ink text-surface shadow-card; }
+  .seg .n { @apply text-xs font-semibold px-1.5 rounded-full bg-black/10 tabular-nums; }
+  .seg a[aria-current] .n { @apply bg-white/20; }
 
   /* Short upload */
   .up-form { @apply mt-3 pt-3 border-t border-line; }

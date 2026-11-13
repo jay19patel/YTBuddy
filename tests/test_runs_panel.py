@@ -42,9 +42,7 @@ def test_running_run_is_polled_and_the_today_page_shows_it_too(container, user_a
 
 def test_idea_page_says_what_to_do_next_and_where_the_script_is(container, user_and_channel, db_url):
     user_id, channel = user_and_channel
-    daily = container.scheduling.run_now(user_id, channel)
-    with container.uow() as uow:
-        idea = next(a for a in uow.assets.for_run(daily.run_id) if a.kind == "idea" and a.data["rank"] == 3)
+    idea = container.review.add_idea(user_id, channel, "A saved idea", "", format="long")  # saved, not developed
     client, token = logged_in(db_url, user_id)
     before = client.get(f"/assets/{idea.id}").text
     assert "Next step: write the script" in before and "Script ready" not in before

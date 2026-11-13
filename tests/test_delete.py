@@ -10,7 +10,11 @@ def daily(container, user_and_channel):
     user_id, channel = user_and_channel
     run = container.scheduling.run_now(user_id, channel)
     with container.uow() as uow:
-        return {(a.kind, a.data.get("rank")): a for a in uow.assets.for_run(run.run_id)}, user_id
+        # ideas by rank (1-2 long, 3-7 Shorts); a script, package or SEO by the idea it belongs to
+        return {
+            (a.kind, a.data.get("rank") if a.parent_id is None or a.kind == "idea" else a.parent_id): a
+            for a in uow.assets.for_run(run.run_id)
+        }, user_id
 
 
 def exists(container, user_id, asset_id):
@@ -30,20 +34,20 @@ def test_deleting_an_idea_removes_its_script_package_and_seo_only(container, use
     assert r.status_code == 303 and r.headers["location"].startswith("/ideas")
     assert not exists(container, user_id, idea_one.id)
     for kind in ("script", "package", "seo"):
-        assert not exists(container, user_id, made[(kind, None)].id), kind
+        assert not exists(container, user_id, made[(kind, idea_one.id)].id), kind
     assert exists(container, user_id, idea_two.id) and exists(container, user_id, made[("brief", None)].id)
     page = client.get("/ideas").text
-    assert "Idea 0" not in page and "Idea 1" in page  # rank 1 is titled "Idea 0" in the fake answer
+    assert f'href="/assets/{idea_one.id}"' not in page and f'href="/assets/{idea_two.id}"' in page
     assert client.get("/today").status_code == 200  # the brief page copes with its script being gone
 
 
 def test_deleting_a_script_keeps_the_idea(container, user_and_channel, db_url):
     made, user_id = daily(container, user_and_channel)
     client, token = logged_in(db_url, user_id)
-    script = made[("script", None)]
+    script = made[("script", made[("idea", 1)].id)]
     client.post(f"/assets/{script.id}/delete", data={"csrf": token, "next": "/scripts"})
     assert not exists(container, user_id, script.id) and exists(container, user_id, made[("idea", 1)].id)
-    assert "No scripts yet" in client.get("/scripts").text
+    assert f'href="/assets/{script.id}"' not in client.get("/scripts").text
 
 
 def test_deleting_from_the_asset_page_lands_on_the_list_not_a_404(container, user_and_channel, db_url):

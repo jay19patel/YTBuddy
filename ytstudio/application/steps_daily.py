@@ -6,7 +6,16 @@ from typing import Any
 from pydantic import BaseModel
 
 from ytstudio.application.pipeline import Context, Step, register
-from ytstudio.application.schemas import HooksOut, IdeasOut, PackageOut, PerformanceOut, ScriptOut, SeoOut
+from ytstudio.application.schemas import (
+    HooksOut,
+    IdeasOut,
+    PackageOut,
+    PerformanceOut,
+    ScriptOut,
+    SeoOut,
+    ShortScriptOut,
+)
+from ytstudio.domain.errors import PermanentError
 from ytstudio.domain.events import BriefReady
 from ytstudio.domain.metrics import age_days, median_views, retention_cliffs, top_and_bottom, velocity
 from ytstudio.domain.models import AssetStatus, Queue, Video
@@ -206,22 +215,33 @@ class RankTrends(Step):
 
 @register
 class GenerateIdeas(LLMStep):
+    """Long-video ideas first, then Shorts ideas, numbered 1..n in that order (2 + 5 by default)."""
+
     name = "generate_ideas"
     needs = ("rank_trends", "fetch_performance")
 
     def run(self, ctx: Context) -> dict[str, Any]:
         perf, outliers = ctx.out("fetch_performance"), ctx.out("rank_trends")["outliers"]
         analysis = ctx.outputs.get("analyze_performance", {})
-        out = self.ask(ctx, "smart", "ideas", {"outliers": outliers, "perf": perf, "analysis": analysis}, IdeasOut)
         known = {o["video_id"] for o in outliers}
         own = {v["video_id"] for v in perf["top"] + perf["bottom"]}
-        ideas = []
-        for i, idea in enumerate(out.ideas):
-            d = dump(idea) | {"rank": i + 1}
-            # Keep only references that exist: the brief must never cite a video we did not see.
-            d["outlier_refs"] = [r for r in d["outlier_refs"] if r in known]
-            d["builds_on"] = [r for r in d["builds_on"] if r in own]
-            ideas.append(d)
+        wanted = (
+            ("long", int(self.deps.settings.get("daily_long_videos", 2))),
+            ("short", int(self.deps.settings.get("daily_shorts", 5))),
+        )
+        ideas: list[dict[str, Any]] = []
+        for fmt, count in wanted:
+            if count <= 0:
+                continue
+            variables = {"outliers": outliers, "perf": perf, "analysis": analysis, "format": fmt, "count": count}
+            for idea in self.ask(ctx, "smart", "ideas", variables, IdeasOut).ideas[:count]:
+                d = dump(idea) | {"rank": len(ideas) + 1, "format": fmt, "source": "auto"}
+                if fmt == "short":
+                    d["effort"] = "short"
+                # Keep only references that exist: the brief must never cite a video we did not see.
+                d["outlier_refs"] = [r for r in d["outlier_refs"] if r in known]
+                d["builds_on"] = [r for r in d["builds_on"] if r in own]
+                ideas.append(d)
         return {"ideas": ideas}
 
 
@@ -229,19 +249,60 @@ def chosen_idea(ctx: Context) -> dict[str, Any]:
     return dict(ctx.inputs.get("idea") or ctx.out("generate_ideas")["ideas"][0])
 
 
+def long_script(step: LLMStep, ctx: Context, idea: dict[str, Any]) -> dict[str, Any]:
+    """Five hooks off the 21 formulas, scored by the hook panel; the best one opens the full script."""
+    hooks = step.ask(ctx, "smart", "hooks", {"idea": idea}, HooksOut).hooks
+    scored = step.deps.hooks.score(hooks)
+    best = scored[0]
+    script = step.ask(ctx, "smart", "script", {"idea": idea, "hook": best["hook"]}, ScriptOut)
+    return {"idea": idea, "format": "long", "hooks": scored, "hook": best, "script": dump(script)}
+
+
+def short_script(step: LLMStep, ctx: Context, idea: dict[str, Any]) -> dict[str, Any]:
+    """A Short is one call: the model writes the hook, the lines and the title and description together."""
+    out = step.ask(ctx, "smart", "short_script", {"idea": idea}, ShortScriptOut)
+    scored = step.deps.hooks.score([out.hook])
+    script = {
+        "title_working": out.title,
+        "sections": [dump(sec) for sec in out.sections],
+        "estimated_minutes": round(min(out.estimated_seconds, 60) / 60, 2),
+    }
+    return {
+        "idea": idea,
+        "format": "short",
+        "hooks": scored,
+        "hook": scored[0],
+        "script": script,
+        "title": out.title,
+        "description": out.description,
+    }
+
+
+def long_package(step: LLMStep, ctx: Context, idea: dict[str, Any], script: dict[str, Any] | None) -> dict[str, Any]:
+    out = step.ask(ctx, "smart", "package", {"idea": idea, "script": script}, PackageOut)
+    pairs = [dump(p) | {"lint": step.deps.linter.lint(p.title, p.thumbnail_text)} for p in out.pairs]
+    return {"idea": idea, "pairs": pairs, "thumbnail_brief": out.thumbnail_brief}
+
+
+def long_seo(step: LLMStep, ctx: Context, idea: dict[str, Any], script: dict[str, Any] | None) -> dict[str, Any]:
+    out = step.ask(ctx, "smart", "seo", {"idea": idea, "script": script}, SeoOut)
+    return {"idea": idea, **dump(out), "chapters": "Added after recording, from the final transcript."}
+
+
 @register
 class WriteScript(LLMStep):
-    """Five hooks off the 21 formulas, scored by the hook panel; the best one opens the full script."""
-
     name = "write_script"
 
     def run(self, ctx: Context) -> dict[str, Any]:
-        idea = chosen_idea(ctx)
-        hooks = self.ask(ctx, "smart", "hooks", {"idea": idea}, HooksOut).hooks
-        scored = self.deps.hooks.score(hooks)
-        best = scored[0]
-        script = self.ask(ctx, "smart", "script", {"idea": idea, "hook": best["hook"]}, ScriptOut)
-        return {"idea": idea, "hooks": scored, "hook": best, "script": dump(script)}
+        return long_script(self, ctx, chosen_idea(ctx))
+
+
+@register
+class WriteShortScript(LLMStep):
+    name = "write_short_script"
+
+    def run(self, ctx: Context) -> dict[str, Any]:
+        return short_script(self, ctx, chosen_idea(ctx))
 
 
 @register
@@ -250,11 +311,7 @@ class BuildPackage(LLMStep):
     critical = False
 
     def run(self, ctx: Context) -> dict[str, Any]:
-        idea = chosen_idea(ctx)
-        script = ctx.outputs.get("write_script", {}).get("script")
-        out = self.ask(ctx, "smart", "package", {"idea": idea, "script": script}, PackageOut)
-        pairs = [dump(p) | {"lint": self.deps.linter.lint(p.title, p.thumbnail_text)} for p in out.pairs]
-        return {"idea": idea, "pairs": pairs, "thumbnail_brief": out.thumbnail_brief}
+        return long_package(self, ctx, chosen_idea(ctx), ctx.outputs.get("write_script", {}).get("script"))
 
 
 @register
@@ -263,13 +320,46 @@ class WriteSeo(LLMStep):
     critical = False
 
     def run(self, ctx: Context) -> dict[str, Any]:
-        idea = chosen_idea(ctx)
-        script = ctx.outputs.get("write_script", {}).get("script")
-        out = self.ask(ctx, "smart", "seo", {"idea": idea, "script": script}, SeoOut)
-        return {"idea": idea, **dump(out), "chapters": "Added after recording, from the final transcript."}
+        return long_seo(self, ctx, chosen_idea(ctx), ctx.outputs.get("write_script", {}).get("script"))
 
 
-SECTION_KIND = {"write_script": "script", "build_package": "package", "write_seo": "seo"}
+@register
+class DevelopIdeas(LLMStep):
+    """The daily run's writing: every idea becomes a script. Long ideas also get titles and SEO; Shorts get a title
+    and description from the script itself. One task per idea (a chord); one failing idea does not lose the rest."""
+
+    name = "develop_ideas"
+    needs = ("generate_ideas",)
+    fan_out = True
+
+    def items(self, ctx: Context) -> list[Any]:
+        return list(ctx.out("generate_ideas")["ideas"])
+
+    def run_item(self, ctx: Context, item: Any) -> Any:
+        idea = dict(item)
+        try:
+            if idea.get("format") == "short":
+                return {"idea": idea, "script": short_script(self, ctx, idea)}
+            script = long_script(self, ctx, idea)
+            return {
+                "idea": idea,
+                "script": script,
+                "package": long_package(self, ctx, idea, script["script"]),
+                "seo": long_seo(self, ctx, idea, script["script"]),
+            }
+        except PermanentError as e:
+            return {"idea": idea, "error": str(e)[:300]}
+
+    def merge(self, ctx: Context, results: list[Any]) -> dict[str, Any]:
+        return {"developed": sorted(results, key=lambda r: r["idea"]["rank"])}
+
+
+SECTION_KIND = {
+    "write_script": "script",
+    "write_short_script": "script",
+    "build_package": "package",
+    "write_seo": "seo",
+}
 
 
 @register
@@ -284,6 +374,11 @@ class SaveBrief(Step):
         brief_id, idea_ids = None, []
         with self.deps.uow() as uow:
             if "generate_ideas" in o:  # a daily run; "develop" runs only add sections under the picked idea
+                failed = [
+                    {"idea": d["idea"]["title"], "error": d["error"]}
+                    for d in o.get("develop_ideas", {}).get("developed", [])
+                    if d.get("error")
+                ]
                 brief = uow.assets.add(
                     ctx.asset(
                         kind="brief",
@@ -292,13 +387,22 @@ class SaveBrief(Step):
                             "performance": o.get("fetch_performance"),
                             "analysis": o.get("analyze_performance"),
                             "trends": o.get("rank_trends"),
+                            "failed": failed,
                         },
                     )
                 )
-                brief_id = brief.id
+                brief_id, by_rank = brief.id, {}
                 for idea in o["generate_ideas"]["ideas"]:
                     a = uow.assets.add(ctx.asset(kind="idea", title=idea["title"], data=idea, parent_id=brief_id))
                     idea_ids.append(a.id)
+                    by_rank[idea["rank"]] = a.id
+                for item in o.get("develop_ideas", {}).get("developed", []):
+                    parent = by_rank[item["idea"]["rank"]]
+                    for kind in ("script", "package", "seo"):
+                        if kind in item:
+                            uow.assets.add(
+                                ctx.asset(kind=kind, title=item["idea"]["title"], data=item[kind], parent_id=parent)
+                            )
             parent = ctx.inputs.get("idea_asset_id") or (idea_ids[0] if idea_ids else brief_id)
             for step, kind in SECTION_KIND.items():
                 if step in o:
@@ -326,7 +430,7 @@ class SaveSection(Step):
             if asset.kind == "brief":  # the brief's regenerable section is its analysis
                 new = asset.data | {"analysis": new}
             asset.data = new | {"history": history[:5]}
-            asset.title = new.get("title") or new.get("idea", {}).get("title", asset.title)
+            asset.title = new.get("idea", {}).get("title") or new.get("title") or asset.title
             asset.status = AssetStatus.NEEDS_REVIEW
             uow.assets.update(asset)
             uow.commit()

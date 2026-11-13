@@ -2,47 +2,58 @@
 {% import "macros.html" as m with context %}
 {% block title %}Ideas · {{ current.title }}{% endblock %}
 {% block content %}
-<header><h1>Ideas backlog</h1></header>
+<header><h1>Ideas</h1><span class="sub">Every day: 2 long-video ideas and 5 Shorts ideas, plus the ones you add.</span></header>
 <section class="panel">
   <h2>Add your own idea</h2>
   <form method="post" action="/ideas/new">
     <input type="hidden" name="csrf" value="{{ csrf }}">
+    <div class="modes" role="radiogroup" aria-label="Video type">
+      <input type="radio" id="f-long" name="format" value="long" {% if fmt == "long" %}checked{% endif %}><label for="f-long">Long video</label>
+      <input type="radio" id="f-short" name="format" value="short" {% if fmt == "short" %}checked{% endif %}><label for="f-short">Short</label>
+    </div>
     <div class="row"><label class="field" for="i-title">Idea or topic</label>
       <input type="text" id="i-title" name="title" maxlength="200" required placeholder="For example: Build an AI app with FastAPI in 30 minutes"></div>
     <div class="row"><label class="field" for="i-details">Details (optional)</label>
       <textarea id="i-details" name="details" rows="3" placeholder="Angle, key points, who it is for, anything the script must include"></textarea></div>
-    <div class="row"><label class="field" for="i-effort">Video type</label>
-      <select id="i-effort" name="effort" class="short-select">
-        <option value="standard">Standard video</option><option value="short">Short video</option><option value="anchor">Big anchor video</option>
-      </select></div>
     <div class="actions">
       <button class="btn quiet" type="submit" name="mode" value="script">Add and write script</button>
       <button class="btn small" type="submit" name="mode" value="save">Just save the idea</button>
     </div>
   </form>
 </section>
-<form class="toolbar" method="get" action="/ideas">
-  <label>Status
-    <select name="status" data-autosubmit>
-      {% for v, name in [("", "All"), ("needs_review", "Needs review"), ("approved", "Approved"), ("discarded", "Discarded")] %}
-        <option value="{{ v }}" {% if (status or "") == v %}selected{% endif %}>{{ name }}</option>
-      {% endfor %}
-    </select>
-  </label>
-  <noscript><button class="btn quiet">Apply</button></noscript>
-</form>
+<div class="toolbar between">
+  {{ m.format_toggle("/ideas", fmt, counts, status) }}
+  <form method="get" action="/ideas">
+    <input type="hidden" name="format" value="{{ fmt }}">
+    <label>Status
+      <select name="status" data-autosubmit>
+        {% for v, name in [("", "All"), ("needs_review", "Needs review"), ("approved", "Approved"), ("discarded", "Discarded")] %}
+          <option value="{{ v }}" {% if (status or "") == v %}selected{% endif %}>{{ name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <noscript><button class="btn quiet">Apply</button></noscript>
+  </form>
+</div>
 <section class="panel">
   {% if ideas %}
   <div class="cards">
   {% for i in ideas %}{% set d = i.data %}
-    <article class="card">
-      <div class="section-head"><h3><a href="/assets/{{ i.id }}">{{ i.title }}</a></h3>{{ m.review_actions(i, "/ideas") }}</div>
+    <article class="card idea-card">
+      <div class="section-head">
+        <h3><i class="lead-ico" data-lucide="lightbulb"></i><a href="/assets/{{ i.id }}">{{ i.title }}</a></h3>
+        {{ m.review_actions(i, "/ideas?format=" ~ fmt) }}
+      </div>
+      <div class="chips">{{ m.chips(fmt, d | is_manual) }}</div>
       <p>{{ d.angle }}</p>
-      <p class="muted">{{ d.effort }} · {{ i.created_at.strftime("%-d %b") }} · {{ d.outlier_refs | length }} outlier reference(s)</p>
-      <div class="actions">{{ m.post("/ideas/" ~ i.id ~ "/develop", "Develop: script, package, SEO", "copy") }}</div>
+      <p class="muted">{{ i.created_at.strftime("%-d %b") }}{% if d.outlier_refs %} · {{ d.outlier_refs | length }} outlier reference(s){% endif %}</p>
+      <div class="actions">
+        {% if scripted.get(i.id) %}<a class="btn small" href="/assets/{{ scripted[i.id] }}">Open the script</a>
+        {% else %}{{ m.post("/ideas/" ~ i.id ~ "/develop", "Write the Short script" if fmt == "short" else "Develop: script, package, SEO", "copy") }}{% endif %}
+      </div>
     </article>
   {% endfor %}
   </div>
-  {% else %}<p class="muted">No ideas yet. They arrive with each daily brief.</p>{% endif %}
+  {% else %}<p class="muted">No {{ "Shorts" if fmt == "short" else "long-video" }} ideas {% if status %}with this status {% endif %}yet. They arrive with each daily brief, or add your own above.</p>{% endif %}
 </section>
 {% endblock %}

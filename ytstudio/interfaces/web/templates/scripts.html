@@ -2,29 +2,43 @@
 {% import "macros.html" as m with context %}
 {% block title %}Scripts · {{ current.title }}{% endblock %}
 {% block content %}
-<header><h1>Scripts</h1><span class="sub">One is written every day, plus any you ask for.</span></header>
-<form class="toolbar" method="get" action="/scripts">
-  <label>Status
-    <select name="status" data-autosubmit>
-      {% for v, name in [("", "All"), ("needs_review", "Needs review"), ("approved", "Approved"), ("discarded", "Discarded")] %}
-        <option value="{{ v }}" {% if (status or "") == v %}selected{% endif %}>{{ name }}</option>
-      {% endfor %}
-    </select>
-  </label>
-  <noscript><button class="btn quiet">Apply</button></noscript>
-</form>
+<header><h1>Scripts</h1><span class="sub">Every day: 2 long-video scripts and 5 Shorts scripts, plus any you ask for.</span></header>
+<div class="toolbar between">
+  {{ m.format_toggle("/scripts", fmt, counts, status) }}
+  <form method="get" action="/scripts">
+    <input type="hidden" name="format" value="{{ fmt }}">
+    <label>Status
+      <select name="status" data-autosubmit>
+        {% for v, name in [("", "All"), ("needs_review", "Needs review"), ("approved", "Approved"), ("discarded", "Discarded")] %}
+          <option value="{{ v }}" {% if (status or "") == v %}selected{% endif %}>{{ name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <noscript><button class="btn quiet">Apply</button></noscript>
+  </form>
+</div>
 <section class="panel">
   {% if scripts %}
   <div class="cards">
   {% for s in scripts %}{% set d = s.data %}
     <article class="card">
-      <div class="section-head"><h3><a href="/assets/{{ s.id }}">{{ s.title }}</a></h3>{{ m.review_actions(s, "/scripts") }}</div>
-      <p class="muted">{{ s.created_at.strftime("%-d %b %Y") }} · about {{ d.script.estimated_minutes }} min · {{ d.script.sections | length }} sections
-        · hook panel score {{ d.hook.panel_score }} <span class="muted">({{ d.hook.band | lower }}, a heuristic)</span></p>
-      <pre class="copyable">{{ d.hook.hook }}</pre>
+      <div class="section-head"><h3><a href="/assets/{{ s.id }}">{{ s.title }}</a></h3>{{ m.review_actions(s, "/scripts?format=" ~ fmt) }}</div>
+      <div class="chips">{{ m.chips(fmt, d | is_manual) }}</div>
+      {% if fmt == "short" %}
+        <p class="muted">{{ s.created_at.strftime("%-d %b %Y") }} · about {{ (d.script.estimated_minutes * 60) | round | int }} seconds · hook panel score {{ d.hook.panel_score }}</p>
+        <pre class="copyable">{{ d.hook.hook }}</pre>
+        {% if d.title %}<p><strong>Title:</strong> {{ d.title }}</p>{% endif %}
+        <div class="actions"><a class="btn small" href="/assets/{{ s.id }}">Read and edit</a><button class="copy" type="button" data-copy-target="#sp-{{ s.id }}">Copy the script</button></div>
+        <pre class="copyable" id="sp-{{ s.id }}" hidden>{% for x in d.script.sections %}{{ x.spoken }}
+{% endfor %}</pre>
+      {% else %}
+        <p class="muted">{{ s.created_at.strftime("%-d %b %Y") }} · about {{ d.script.estimated_minutes }} min · {{ d.script.sections | length }} sections
+          · hook panel score {{ d.hook.panel_score }} <span class="muted">({{ d.hook.band | lower }}, a heuristic)</span></p>
+        <pre class="copyable">{{ d.hook.hook }}</pre>
+      {% endif %}
     </article>
   {% endfor %}
   </div>
-  {% else %}<p class="muted">No scripts yet. The daily run writes one, or add your own idea on the Ideas page.</p>{% endif %}
+  {% else %}<p class="muted">No {{ "Shorts" if fmt == "short" else "long-video" }} scripts {% if status %}with this status {% endif %}yet. The daily run writes them, or add your own idea on the Ideas page.</p>{% endif %}
 </section>
 {% endblock %}
