@@ -269,6 +269,56 @@
   .uploading .progress { display: block; }
   #status { @apply text-sm text-muted mt-2 min-h-6; }
 
+  /* Short upload */
+  .up-form { @apply mt-3 pt-3 border-t border-line; }
+  .up-form .actions select { @apply w-auto; }
+  .up-form .btn svg { @apply size-4; }
+  .uploaded { @apply flex gap-3 mt-3 p-3 rounded-xl; background: color-mix(in srgb, var(--ok) 9%, var(--surface)); border: 1px solid color-mix(in srgb, var(--ok) 35%, var(--line)); }
+  .uploaded .tick { @apply size-7 rounded-full grid place-items-center shrink-0 bg-ok text-white font-bold; }
+  .uploaded div { @apply flex flex-col text-sm; }
+  .uploaded span { @apply text-muted; }
+  .uploaded a { @apply font-semibold underline underline-offset-2 text-ink; }
+
+  /* Run steps */
+  .stepper { @apply list-none p-0 mt-4 mb-0 flex flex-col; }
+  .step { @apply flex gap-3 py-2 relative; }
+  .step:not(:last-child)::after { content: ""; @apply absolute left-[11px] top-8 bottom-[-4px] w-px bg-line; }
+  .step .ico { @apply size-6 rounded-full grid place-items-center shrink-0 border-2 border-line bg-surface text-xs font-bold leading-none; }
+  .step .line { @apply flex flex-wrap items-baseline gap-x-3; }
+  .step strong { @apply text-sm font-semibold text-muted; }
+  .step .time { @apply text-xs text-muted tabular-nums; }
+  .step .note { @apply hidden text-[13px] text-muted mt-0.5 mb-0 max-w-[62ch]; }
+  .step.running .note, .step.waiting .note { @apply block; }
+  .step.done .ico { @apply bg-ok border-ok text-white; }
+  .step.done .ico::before { content: "✓"; }
+  .step.done strong { @apply text-ink; }
+  .step.running .ico, .step.waiting .ico { @apply border-info border-t-transparent bg-transparent; animation: spin .9s linear infinite; }
+  .step.running strong, .step.waiting strong { @apply text-ink; }
+  .step.failed .ico { @apply bg-brand border-brand text-white; }
+  .step.failed .ico::before { content: "!"; }
+  .step.failed strong { @apply text-brand; }
+
+  /* Master file upload */
+  .drop {
+    @apply relative flex flex-col items-center justify-center gap-1 text-center px-5 py-8 cursor-pointer bg-canvas rounded-card border-2 border-dashed border-line;
+  }
+  .drop input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+  .drop svg { @apply size-8 text-muted mb-1; }
+  .drop strong { @apply text-[15px] break-all; }
+  .drop span { @apply text-sm text-muted; }
+  .drop:hover, .drop.drag { border-color: var(--ink); }
+  .drop.has-file { @apply border-solid bg-surface; border-color: var(--ok); }
+  .drop.has-file svg { @apply text-ok; }
+  .uprog { @apply mt-4 p-4 rounded-xl border border-line bg-canvas; }
+  .uprog-top { @apply flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 mb-2; }
+  .uprog-top strong { @apply text-2xl font-bold tabular-nums; }
+  .uprog-top span { @apply text-sm text-muted; }
+  .bar { @apply h-2.5 rounded-full bg-sunken overflow-hidden; }
+  .bar div { @apply h-full w-0 rounded-full bg-ok; transition: width .25s ease; }
+  .uprog.failed { border-color: var(--brand); }
+  .uprog.failed .bar div { @apply bg-brand; }
+  .uprog.failed .hint { @apply text-brand; }
+
   /* ---- Data ---- */
   .stats { @apply grid p-0 overflow-hidden; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
   .stats div { @apply px-5 py-4 border-r border-line; }
@@ -293,6 +343,7 @@
   tbody tr:last-child td { @apply border-b-0; }
   tbody tr:hover td { background: color-mix(in srgb, var(--sunken) 55%, transparent); }
   td:first-child { @apply whitespace-normal min-w-[220px]; }
+  td .hint { @apply block whitespace-normal max-w-[280px]; }
   td.wrap { @apply whitespace-normal min-w-[240px]; }
   td a { @apply no-underline hover:underline; }
   .pages { @apply flex gap-6 border-b border-line mb-6; }
@@ -318,6 +369,7 @@
   details > summary { @apply cursor-pointer; }
 }
 
+@keyframes spin { to { transform: rotate(360deg); } }
 @keyframes pulse { 50% { box-shadow: 0 0 0 10px transparent; opacity: .6; } }
 
 /* ---- Small screens: sidebar becomes a drawer ---- */
@@ -344,6 +396,6 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .frame, .rail { transition: none; }
-  .dot, .pill.run::before { animation: none; }
+  .dot, .pill.run::before, .step .ico { animation: none; }
   .btn:active { transform: none; }
 }

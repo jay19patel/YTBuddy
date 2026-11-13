@@ -171,6 +171,45 @@ def test_shorts_falls_back_to_whisper_and_auto_triggers(container, user_and_chan
     assert m.id
 
 
+def test_a_short_uploads_once_with_shorts_tag_and_is_marked_uploaded(container, user_and_channel, yt):
+    user_id, _ = user_and_channel
+    yt.cues = transcript()
+    m = ready_master(container, user_id, video_id="own1")
+    res = container.shorts.start(user_id, m.id)
+    with container.uow() as uow:
+        short = next(a for a in uow.assets.for_run(res.run_id) if a.kind == "short")
+    vid = container.shorts.publish(user_id, short.id, "My title", "About rent", ["Shorts", "rent"], "public", None, NOW)
+    body = yt.uploaded[-1]
+    assert vid == "vid123" and body["snippet"]["title"] == "My title" and body["snippet"]["tags"] == ["Shorts", "rent"]
+    assert body["snippet"]["description"].endswith("#Shorts") and body["status"]["privacyStatus"] == "public"
+    with container.uow() as uow:
+        saved = uow.assets.get(short.id, user_id)
+    assert saved.data["youtube_id"] == "vid123" and saved.status == "approved" and saved.title == "My title"
+    with pytest.raises(PermanentError, match="already on YouTube"):
+        container.shorts.publish(user_id, short.id, "x", "", [], "private", None, NOW)
+    scheduled_at = NOW + timedelta(days=1)
+    with container.uow() as uow:
+        other = next(a for a in uow.assets.for_run(res.run_id) if a.kind == "short" and a.id != short.id)
+    with pytest.raises(PermanentError, match="private, unlisted"):
+        container.shorts.publish(user_id, other.id, "x", "", [], "bogus", None, NOW)
+    container.shorts.publish(user_id, other.id, "", "", [], "public", scheduled_at, NOW)
+    assert yt.uploaded[-1]["status"]["privacyStatus"] == "private" and yt.uploaded[-1]["status"]["publishAt"]
+    with pytest.raises(NotFound):
+        container.shorts.publish(user_id, other.id + 999, "x", "", [], "private", None, NOW)
+
+
+def test_a_silent_video_fails_with_a_plain_reason(container, user_and_channel, yt, db_url):
+    user_id, _ = user_and_channel
+    yt.cues = None
+    container.media["transcriber"].transcribe = lambda path, language: []  # whisper heard nothing
+    m = ready_master(container, user_id)
+    res = container.shorts.start(user_id, m.id)
+    from ytstudio.adapters.persistence.queries import Queries
+
+    run = Queries(db_url).run(user_id, res.run_id)
+    assert run and run["status"] == "failed" and "No speech was found" in run["error"]
+
+
 def test_sync_uploads_reports_only_new_after_first_sync(container, user_and_channel, yt):
     assert container.sync.sync_uploads("UCme") == []  # first sync is history
     from tests.fakes import vid
@@ -178,3 +217,49 @@ def test_sync_uploads_reports_only_new_after_first_sync(container, user_and_chan
     yt.own["UCme"].append(vid("fresh", "UCme", 10, days_old=0.1))
     assert container.sync.sync_uploads("UCme") == ["fresh"]
     assert container.sync.refresh_video_analytics("UCme") == 7
+
+
+def test_shorts_page_upload_button_and_green_tick(container, user_and_channel, yt, db_url):
+    from tests.test_characterization import logged_in
+
+    user_id, _ = user_and_channel
+    yt.cues = transcript()
+    res = container.shorts.start(user_id, ready_master(container, user_id, video_id="own1").id)
+    with container.uow() as uow:
+        short = next(a for a in uow.assets.for_run(res.run_id) if a.kind == "short")
+    client, token = logged_in(db_url, user_id)
+    page = client.get("/shorts").text
+    assert (
+        f'action="/shorts/{short.id}/upload"' in page
+        and "Upload to YouTube" in page
+        and "Uploaded to YouTube" not in page
+    )
+    r = client.post(
+        f"/shorts/{short.id}/upload", data={"csrf": token, "title": "T", "privacy": "unlisted"}, follow_redirects=False
+    )
+    assert r.status_code == 303 and "m=short_uploaded" in r.headers["location"]
+    page = client.get("/shorts?status=all").text
+    assert (
+        "Uploaded to YouTube" in page
+        and "https://youtu.be/vid123" in page
+        and f'action="/shorts/{short.id}/upload"' not in page
+    )
+    again = client.post(f"/shorts/{short.id}/upload", data={"csrf": token}, follow_redirects=False)
+    assert again.status_code != 500
+
+
+def test_a_master_file_can_be_deleted_by_its_owner_only(container, user_and_channel, db_url):
+    from tests.test_characterization import logged_in
+
+    user_id, _ = user_and_channel
+    m = ready_master(container, user_id)
+    other = container.accounts.owner("other@example.com")
+    with pytest.raises(NotFound):
+        container.shorts.delete_master(other.id, m.id)
+    client, token = logged_in(db_url, user_id)
+    assert "Delete" in client.get("/shorts").text
+    r = client.post(f"/media/{m.id}/delete", data={"csrf": token}, follow_redirects=False)
+    assert r.status_code == 303 and "m=master_deleted" in r.headers["location"]
+    with container.uow() as uow:
+        assert uow.media.list(user_id, "UCme") == []
+    assert not container.storage.exists(m.storage_key)

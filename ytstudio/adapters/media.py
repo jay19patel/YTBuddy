@@ -130,6 +130,7 @@ class FFmpegMediaProcessor:
             concat = tmpdir / "subs.ffconcat"
             concat.write_text("\n".join(lines) + "\n")
             part = out.with_name(f".{out.name}.part.mp4")
+            # Stereo aformat around loudnorm: ffmpeg 5.1 (the Docker image) cannot link it to the encoder otherwise.
             _ffmpeg(
                 "-ss",
                 f"{start:.3f}",
@@ -146,7 +147,7 @@ class FFmpegMediaProcessor:
                 "-filter_complex",
                 "[0:v]crop='min(iw,ih*9/16)':'min(ih,iw*16/9)',scale=1080:1920,setsar=1[bg];"
                 f"[1:v]format=rgba[sub];[bg][sub]overlay=0:{SUB_Y}:eof_action=pass,format=yuv420p[v];"
-                "[0:a]loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000[a]",
+                "[0:a]aformat=channel_layouts=stereo,loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000,aformat=channel_layouts=stereo[a]",
                 "-map",
                 "[v]",
                 "-map",
@@ -198,6 +199,19 @@ class PillowImageRenderer:
         os.replace(part, out)
 
 
+def decode_16k_mono(path: Path) -> Any:
+    """The audio as 16 kHz mono floats. faster-whisper's own decoder breaks on newer PyAV releases, ffmpeg does not."""
+    import numpy as np
+
+    r = subprocess.run(
+        ["ffmpeg", "-nostdin", "-v", "error", "-i", str(path), "-vn", "-ac", "1", "-ar", "16000", "-f", "f32le", "-"],
+        capture_output=True,
+    )
+    if r.returncode or not r.stdout:
+        raise PermanentError(f"Could not read the audio of this file: {r.stderr.decode(errors='replace')[-300:]}")
+    return np.frombuffer(r.stdout, dtype=np.float32)
+
+
 class FasterWhisperTranscriber:
     """Fallback when captions are missing. Install with: uv sync --extra media"""
 
@@ -213,7 +227,7 @@ class FasterWhisperTranscriber:
         if self._model is None:
             self._model = WhisperModel(self.model_name, compute_type="int8")
         lang = None if language in (None, "hinglish") else language
-        segments, _ = self._model.transcribe(str(media_path), language=lang, vad_filter=True)
+        segments, _ = self._model.transcribe(decode_16k_mono(media_path), language=lang, vad_filter=True)
         return [Cue(s.start, s.end, s.text.strip()) for s in segments]
 
 

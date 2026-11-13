@@ -297,7 +297,7 @@ class Container:
 
     @cached_property
     def shorts(self) -> Shorts:
-        return Shorts(self.uow, self.runner)
+        return Shorts(self.uow, self.runner, self.youtube, self.storage)
 
     # ----- health -----
 

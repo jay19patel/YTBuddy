@@ -7,22 +7,36 @@
 <section class="panel">
   <h2>Master files</h2>
   <p class="muted">Upload your final render. The YouTube API can't download videos, so Shorts are cut from this file. Uploads resume if the connection drops.</p>
-  <div class="row-inline">
-    <input type="file" accept="video/*" data-master-file>
-    <button class="btn small" type="button" data-master-upload>Upload</button>
+  <div data-master>
+    <label class="drop" data-master-drop>
+      <input type="file" accept="video/*" data-master-file>
+      <i data-lucide="upload-cloud"></i>
+      <strong data-master-name>Choose your video file</strong>
+      <span data-master-size>or drop it here. mp4, mov, mkv or webm.</span>
+    </label>
+    <div class="actions mt-3">
+      <button class="btn" type="button" data-master-upload disabled>Upload file</button>
+      <span class="hint !mt-0" data-master-hint>Pick a file first.</span>
+    </div>
+    <div class="uprog" data-master-box hidden>
+      <div class="uprog-top"><strong data-master-pct>0%</strong><span data-master-detail>Starting…</span></div>
+      <div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" data-master-progress><div></div></div>
+      <p class="hint" data-master-status aria-live="polite"></p>
+    </div>
   </div>
-  <div class="progress" data-master-progress><div></div></div>
-  <p class="hint" data-master-status aria-live="polite"></p>
   {% if files %}
   <div class="table-wrap"><table>
     <thead><tr><th>File</th><th>Status</th><th>YouTube video</th><th></th></tr></thead>
     <tbody>{% for f in files %}<tr>
       <td>{{ f.filename }}<br><span class="muted">{{ (f.size / 1048576) | num(1) }} MB</span></td>
-      <td>{% if f.status == "ready" %}<span class="pill ok">Ready</span>{% else %}<span class="pill">{{ ((f.received / f.size * 100) if f.size else 0) | num }}% uploaded</span>{% endif %}</td>
+      <td>{% if f.status == "ready" %}<span class="pill ok">Ready</span>{% else %}<span class="pill run">{{ ((f.received / f.size * 100) if f.size else 0) | num }}% uploaded</span><br><span class="hint">Stopped part way. Choose the same file above and press Upload to continue.</span>{% endif %}</td>
       <td><form method="post" action="/media/{{ f.id }}/link" class="row-inline"><input type="hidden" name="csrf" value="{{ csrf }}">
         <input type="text" name="video_id" value="{{ f.video_id or '' }}" placeholder="video id or link"><button class="copy">Link</button></form>
         <span class="hint">Linked: captions and retention are used, and a new upload with this id starts Shorts by itself.</span></td>
-      <td>{% if f.status == "ready" %}{{ m.post("/media/" ~ f.id ~ "/shorts", "Make Shorts", "btn small") }}{% endif %}</td>
+      <td><div class="actions">
+        {% if f.status == "ready" %}{{ m.post("/media/" ~ f.id ~ "/shorts", "Make Shorts", "btn small") }}{% endif %}
+        {{ m.post("/media/" ~ f.id ~ "/delete", "Delete", "copy", confirm="Delete " ~ f.filename ~ " for good? Shorts already made from it stay, but you cannot trim them again. This cannot be undone.") }}
+      </div></td>
     </tr>{% endfor %}</tbody>
   </table></div>
   {% endif %}
@@ -54,6 +68,30 @@
           <button class="btn small">Re-render</button></form>
       </details>
       {{ m.review_actions(s, "/shorts") }}
+      {% if d.youtube_id %}
+      <div class="uploaded" role="status">
+        <span class="tick" aria-hidden="true">✓</span>
+        <div>
+          <strong>Uploaded to YouTube</strong>
+          <span>{{ "Private. Goes public " ~ (d.publish_at[:16] | replace("T", " ")) ~ " UTC." if d.publish_at else d.privacy | capitalize ~ "." }}</span>
+          <span><a href="https://youtu.be/{{ d.youtube_id }}" target="_blank" rel="noopener">Watch it</a> · <a href="https://studio.youtube.com/video/{{ d.youtube_id }}/edit" target="_blank" rel="noopener">Open in YouTube Studio</a></span>
+        </div>
+      </div>
+      {% elif s.status != "discarded" and flags.publish %}
+      <form class="up-form" method="post" action="/shorts/{{ s.id }}/upload">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <details class="edit"><summary>Upload settings: title, description, tags, schedule</summary>
+          <div class="row"><label class="field" for="t{{ s.id }}">Title</label><input type="text" id="t{{ s.id }}" name="title" value="{{ s.title }}" maxlength="100"></div>
+          <div class="row"><label class="field" for="d{{ s.id }}">Description</label><textarea id="d{{ s.id }}" name="description" rows="4">{{ d.description }}</textarea><p class="hint">#Shorts is added for you.</p></div>
+          <div class="row"><label class="field" for="g{{ s.id }}">Tags</label><input type="text" id="g{{ s.id }}" name="tags" value="{{ default_tags }}"><p class="hint">Separate with commas.</p></div>
+          <div class="row"><label class="field" for="p{{ s.id }}">Schedule (optional)</label><input type="datetime-local" id="p{{ s.id }}" name="publish_at"><p class="hint">Time zone: {{ tz }}. Leave empty to use the visibility below right away.</p></div>
+        </details>
+        <div class="actions">
+          <select name="privacy" aria-label="Visibility"><option value="private">Private</option><option value="unlisted">Unlisted</option><option value="public">Public</option></select>
+          <button class="btn" type="submit" data-busy="Uploading… keep this tab open"><i data-lucide="youtube"></i>Upload to YouTube</button>
+        </div>
+      </form>
+      {% endif %}
       <p><a href="/files/asset/{{ s.id }}/video?download=1">Download MP4</a>{% if d.cover_key %} · <a href="/files/asset/{{ s.id }}/cover?download=1">Cover</a>{% endif %}</p>
     </article>
   {% endfor %}

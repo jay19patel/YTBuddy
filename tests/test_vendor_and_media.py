@@ -152,3 +152,12 @@ def test_bad_media_is_permanent_error(tmp_path):
     bad.write_bytes(b"nope")
     with pytest.raises(PermanentError):
         FFmpegMediaProcessor().duration(bad)
+
+
+@needs_ffmpeg
+def test_audio_is_decoded_to_16k_mono_floats_for_whisper(fixture_video):
+    pytest.importorskip("numpy")  # only installed with the media extra
+    from ytstudio.adapters.media import decode_16k_mono
+
+    samples = decode_16k_mono(fixture_video)
+    assert str(samples.dtype) == "float32" and abs(len(samples) - 10 * 16000) < 2000 and abs(samples).max() > 0.1

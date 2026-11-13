@@ -20,19 +20,61 @@
 </div>
 {%- endmacro %}
 
+{% set RUN_TITLES = {"daily": "Daily brief", "develop": "Writing the script", "shorts": "Making Shorts"} %}
+{% set STEP_INFO = {
+  "sync_channel": ("Sync channel stats", "Reads your latest channel numbers from YouTube."),
+  "fetch_performance": ("Read your recent videos", "Pulls views and retention for your last uploads."),
+  "analyze_performance": ("Analyse what works", "The AI compares your best and weakest videos."),
+  "discover_trends": ("Find trending videos", "Searches your niche for videos that are taking off."),
+  "rank_trends": ("Rank the outliers", "Checks each channel's usual views to spot real outliers."),
+  "generate_ideas": ("Write five ideas", "The AI turns the outliers into ideas for you."),
+  "write_script": ("Write the script", "The AI writes hooks and the full spoken script."),
+  "build_package": ("Titles and thumbnail text", "Three title and thumbnail pairs."),
+  "write_seo": ("Description and tags", "Search-friendly description, tags and a pinned comment."),
+  "save_brief": ("Save for review", "Puts everything in your review queue."),
+  "get_transcript": ("Get captions", "Asks YouTube for your video's captions."),
+  "transcribe_fallback": ("Turn speech into text", "Runs on this computer. The first time it downloads the speech model (about 460 MB), then it listens to the whole video. This is the slowest step, so it can take several minutes."),
+  "build_chapters": ("Chapters and dead air", "Finds sections and silent gaps from the transcript."),
+  "pick_short_candidates": ("Pick the best moments", "The AI chooses 15 to 58 second parts that work on their own."),
+  "render_shorts": ("Cut the Shorts", "ffmpeg cuts each moment into a vertical video."),
+  "make_covers": ("Make covers", "Draws a cover image for each Short."),
+  "write_short_meta": ("Titles and descriptions", "The AI names each Short."),
+  "queue_shorts": ("Add to review", "Puts the Shorts in your review list."),
+} %}
+
+{% macro stepper(run) -%}
+{% set have = {} %}{% for s in run.steps %}{% set _ = have.update({s.step: s}) %}{% endfor %}
+<ol class="stepper" data-run-steps>
+  {% for name in run.planned %}
+    {% set s = have.get(name) %}{% set st = s.status if s else "pending" %}{% set info = STEP_INFO.get(name, (name | replace("_", " ") | capitalize, "")) %}
+    <li class="step {{ st }}" data-step="{{ name }}" data-started="{{ s.started_at.isoformat() if s and s.started_at else "" }}" data-finished="{{ s.finished_at.isoformat() if s and s.finished_at else "" }}">
+      <span class="ico" aria-hidden="true"></span>
+      <div>
+        <div class="line"><strong>{{ info[0] }}</strong><span class="time" data-time></span></div>
+        <p class="note">{{ info[1] }}</p>
+        {% if s and s.error %}<p class="err-text">{{ s.error }}</p>{% endif %}
+      </div>
+    </li>
+  {% endfor %}
+</ol>
+{%- endmacro %}
+
 {% macro run_progress(run) -%}
 {% if run %}
 {% set live = run.status in ("pending", "running", "waiting") %}
-{% set steps %}<ol class="muted" data-run-steps>{% for s in run.steps %}<li>{{ s.step }}: {{ s.status }}{% if s.error %} <span class="err-text">{{ s.error }}</span>{% endif %}</li>{% endfor %}</ol>{% endset %}
+{% set title = RUN_TITLES.get(run.pipeline, run.pipeline) %}
+{% set n = run.progress.split("/") %}
 {% if run.status == "done" %}
-<details class="panel"><summary class="muted">Last run #{{ run.id }} ({{ run.pipeline }}): done {{ run.created_at | ago }}</summary>{{ steps }}</details>
+<details class="panel"><summary class="muted">Last run #{{ run.id }} ({{ run.pipeline }}): done {{ run.created_at | ago }}</summary>{{ stepper(run) }}</details>
 {% else %}
-<div class="panel" {% if live %}data-run="{{ run.id }}"{% endif %}>
-  <div class="section-head"><h2>Run #{{ run.id }}: {{ run.pipeline }}</h2>
-    <span class="pill {{ 'err' if run.status in ('failed', 'skipped') else 'run' }}" data-run-status>{{ run.status }} {{ run.progress }}</span></div>
+<div class="panel" {% if live %}data-run="{{ run.id }}" data-run-started="{{ run.created_at.isoformat() }}"{% endif %}>
+  <div class="section-head"><h2>{{ title }} <span class="muted">· run #{{ run.id }}</span></h2>
+    <span class="pill {{ 'err' if run.status in ('failed', 'skipped') else 'run' if live else '' }}" data-run-status>{{ run.status }} {{ run.progress }}</span></div>
+  <div class="bar" aria-hidden="true"><div data-run-bar style="width: {{ (n[0] | int * 100 / (n[1] | int or 1)) | round | int }}%"></div></div>
+  <p class="hint" data-run-elapsed>{% if live %}Working on it. This page updates by itself.{% endif %}</p>
   {% if run.error and not live %}<p class="err-text">{{ run.error }}</p>{% endif %}
-  {{ steps }}
-  {% if live %}<p class="hint">This updates by itself and reloads when the run finishes.</p>
+  {{ stepper(run) }}
+  {% if live %}<p class="hint">You can leave this page. The work continues in the background, and the page reloads with the results when you come back or when it finishes.</p>
   {% else %}{{ post("/jobs/runs/" ~ run.id ~ "/retry", "Retry from the failed step") }}{% endif %}
 </div>
 {% endif %}

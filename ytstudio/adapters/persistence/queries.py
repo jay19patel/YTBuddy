@@ -131,8 +131,8 @@ class Queries:
                 return self.run(user_id, r["id"])
         return None
 
-    def latest_run(self, user_id: int, channel_id: str) -> dict[str, Any] | None:
-        runs = self.runs(user_id, channel_id, limit=1)
+    def latest_run(self, user_id: int, channel_id: str, pipeline: str | None = None) -> dict[str, Any] | None:
+        runs = [r for r in self.runs(user_id, channel_id, limit=20) if not pipeline or r["pipeline"] == pipeline]
         return self.run(user_id, runs[0]["id"]) if runs else None
 
     def run(self, user_id: int, run_id: int) -> dict[str, Any] | None:
@@ -152,6 +152,7 @@ class Queries:
             "error": r.error,
             "created_at": r.created_at,
             "steps": steps,
+            "planned": planned or [x["step"] for x in steps],
             "progress": f"{sum(1 for x in steps if x['status'] == 'done')}/{len(planned) or len(steps)}",
         }
 

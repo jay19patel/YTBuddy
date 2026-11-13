@@ -31,8 +31,10 @@ from ytstudio.ports import (
     LLMRequest,
     Notifier,
     OAuthProvider,
+    Storage,
     TokenVault,
     UowFactory,
+    Uploader,
     VideoSource,
 )
 
@@ -469,9 +471,59 @@ class Review:
         )
 
 
+PRIVACY = ("private", "unlisted", "public")
+
+
 class Shorts:
-    def __init__(self, uow: UowFactory, runner: PipelineRunner):
-        self.uow, self.runner = uow, runner
+    def __init__(self, uow: UowFactory, runner: PipelineRunner, youtube: Uploader, storage: Storage):
+        self.uow, self.runner, self.youtube, self.storage = uow, runner, youtube, storage
+
+    def publish(
+        self,
+        user_id: int,
+        asset_id: int,
+        title: str,
+        description: str,
+        tags: list[str],
+        privacy: str,
+        publish_at: datetime | None,
+        now: datetime,
+    ) -> str:
+        """Upload one rendered Short when the user presses the button. Returns the YouTube video id."""
+        with self.uow() as uow:
+            a = uow.assets.get(asset_id, user_id)
+        if a.kind != "short" or not a.data.get("video_key"):
+            raise PermanentError("Only a rendered Short can be uploaded.")
+        if a.data.get("youtube_id"):
+            raise PermanentError(f"This Short is already on YouTube: https://youtu.be/{a.data['youtube_id']}")
+        if privacy not in PRIVACY:
+            raise PermanentError("Pick private, unlisted or public.")
+        title = (title.strip() or a.title)[:100]
+        description = description.strip()
+        if "#shorts" not in (title + description).lower():
+            description = f"{description}\n\n#Shorts".strip()  # YouTube uses the tag to classify the video as a Short
+        status: dict[str, Any] = {"privacyStatus": privacy, "selfDeclaredMadeForKids": False}
+        if publish_at:  # uploaded as private now, YouTube makes it public at that time
+            status = {**status, "privacyStatus": "private", "publishAt": publish_at.strftime("%Y-%m-%dT%H:%M:%SZ")}
+        body = {
+            "snippet": {"title": title, "description": description, "tags": tags[:15], "categoryId": "22"},
+            "status": status,
+        }
+        video_id = self.youtube.upload(a.channel_id, str(self.storage.get(a.data["video_key"])), body)
+        with self.uow() as uow:
+            a = uow.assets.get(asset_id, user_id)
+            a.title, a.status = title, AssetStatus.APPROVED
+            a.data = {
+                **a.data,
+                "description": description,
+                "youtube_id": video_id,
+                "uploaded_at": now.isoformat(),
+                "privacy": status["privacyStatus"],
+                "publish_at": publish_at.isoformat() if publish_at else None,
+            }
+            uow.assets.update(a)
+            uow.commit()
+        return video_id
 
     def start(self, user_id: int, media_id: int) -> StartResult:
         with self.uow() as uow:
@@ -485,6 +537,19 @@ class Shorts:
             f"{m.channel_id}:shorts:{m.id}",
             {"media_id": m.id, "storage_key": m.storage_key, "video_id": m.video_id},
         )
+
+    def delete_master(self, user_id: int, media_id: int) -> None:
+        """Remove an uploaded master file and its stored copy. Shorts already made from it stay."""
+        with self.uow() as uow:
+            m = uow.media.get(media_id, user_id)
+            if uow.runs.is_active(f"{m.channel_id}:shorts:{m.id}"):
+                raise PermanentError(
+                    "Shorts are being made from this file. Wait for that run to finish, then delete it."
+                )
+            uow.media.delete(m.id, user_id)
+            uow.commit()
+        if m.storage_key:
+            self.storage.delete(m.storage_key)
 
     def trim(self, user_id: int, asset_id: int, start: float, end: float, now: datetime) -> StartResult:
         if not 15 <= end - start <= 58 or start < 0:

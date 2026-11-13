@@ -43,6 +43,9 @@ MESSAGES = {
     "connected": "Channel connected. Its niche, language and region are being detected; confirm them below.",
     "already": "Already ran today for this channel; showing that run.",
     "done_already": "That is already done. The script, titles and SEO are on this page.",
+    "uploaded": "Upload finished. Your file is ready: press Make Shorts next to it.",
+    "master_deleted": "File deleted. Shorts already made from it are kept.",
+    "short_uploaded": "Uploaded to YouTube. The Short now shows a green Uploaded tick with its link.",
     "busy": "Another run for this channel is active.",
 }
 
@@ -78,6 +81,8 @@ def short(n: float) -> str:
 
 
 templates = Jinja2Templates(directory=HERE / "templates")
+# A changed file gets a new URL, so a browser never keeps serving the old CSS or JS.
+templates.env.globals["static_v"] = str(int(max(f.stat().st_mtime for f in (HERE / "static").glob("*.*"))))
 templates.env.filters["num"] = lambda n, digits=0: f"{float(n or 0):,.{digits}f}"
 templates.env.filters["short"] = short
 templates.env.filters["dur"] = lambda s: f"{int(s or 0) // 60}:{int(s or 0) % 60:02d}"

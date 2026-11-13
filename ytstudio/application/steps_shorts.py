@@ -8,14 +8,24 @@ from typing import Any
 from ytstudio.application.pipeline import Context, Step, register
 from ytstudio.application.schemas import ShortMetaOut, ShortPicksOut
 from ytstudio.application.steps_daily import LLMStep, dump
+from ytstudio.domain.errors import PermanentError
 from ytstudio.domain.events import ShortsReady
 from ytstudio.domain.models import AssetStatus, Cue, Queue
 
 MIN_S, MAX_S = 15.0, 58.0
 
 
+NO_SPEECH = (
+    "No speech was found in this video. Its sound is silent or only music, so there is nothing to "
+    "pick Shorts from. Upload a video with a voice track, or link it to a YouTube video that has captions."
+)
+
+
 def cues_of(ctx: Context) -> list[Cue]:
-    return [Cue(**c) for c in ctx.out("transcribe_fallback")["cues"]]
+    cues = [Cue(**c) for c in ctx.out("transcribe_fallback")["cues"]]
+    if not cues:  # also catches a run whose empty transcript was saved before this check existed
+        raise PermanentError(NO_SPEECH)
+    return cues
 
 
 def candidate_windows(
@@ -79,6 +89,8 @@ class TranscribeFallback(Step):
         master = self.deps.storage.get(ctx.inputs["storage_key"])
         lang = ctx.schedule.language
         cues = self.deps.transcriber.transcribe(master, None if lang == "hinglish" else lang)
+        if not cues:
+            raise PermanentError(NO_SPEECH)
         return {"cues": [asdict(c) for c in cues], "source": "whisper"}
 
 

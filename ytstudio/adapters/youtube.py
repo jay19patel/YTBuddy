@@ -584,8 +584,19 @@ class YouTubeGateway:
             media_body=MediaFileUpload(path, chunksize=8 * 1024 * 1024, resumable=True),
         )
         resp = None
-        while resp is None:
-            _, resp = req.next_chunk()
+        try:
+            while resp is None:
+                _, resp = req.next_chunk()
+        except HttpError as e:
+            text = str(e)
+            if e.resp.status == 403 and ("quotaExceeded" in text or "uploadLimitExceeded" in text):
+                self.quota.exhausted()
+                raise QuotaExceeded(next_quota_reset(self.clock.now())) from e
+            if e.resp.status == 429 or e.resp.status >= 500:
+                raise TransientError(f"YouTube {e.resp.status}") from e
+            raise PermanentError(friendly_error(e)) from e
+        except (OSError, TimeoutError, httplib2.HttpLib2Error, TransportError) as e:
+            raise TransientError(f"network: {e}") from e
         return str(resp["id"])
 
     def create_live(

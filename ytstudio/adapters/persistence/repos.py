@@ -240,6 +240,12 @@ class SqlMedia(_Repo):
         r.received, r.status, r.storage_key, r.video_id = m.received, m.status, m.storage_key, m.video_id
         self.s.add(r)
 
+    def delete(self, media_id: int, user_id: int) -> None:
+        r = self.s.get(t.MediaFile, media_id)
+        if not r or r.user_id != user_id:
+            raise NotFound("media")
+        self.s.delete(r)
+
     def list(self, user_id: int, channel_id: str) -> list[MediaFile]:
         q = (
             select(t.MediaFile)
@@ -417,6 +423,10 @@ class SqlRuns(_Repo):
             existing = self.s.exec(select(t.PipelineRun).where(t.PipelineRun.idem_key == idem_key)).one()
             return self._dom(existing), False
         return self._dom(r), True
+
+    def is_active(self, idem_key: str) -> bool:
+        r = self.s.exec(select(t.PipelineRun).where(t.PipelineRun.idem_key == idem_key)).first()
+        return bool(r and r.status in (RunStatus.PENDING, RunStatus.RUNNING, RunStatus.WAITING))
 
     def get(self, run_id: int) -> Run:
         if not (r := self.s.get(t.PipelineRun, run_id)):

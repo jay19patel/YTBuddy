@@ -8,8 +8,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <script src="/static/theme.js"></script>
-  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/theme.js?v={{ static_v }}"></script>
+  <link rel="stylesheet" href="/static/app.css?v={{ static_v }}">
 </head>
 <body {% if not user %}class="bare"{% endif %}>
   {% if user %}
@@ -100,7 +100,7 @@
     {% endif %}
     {% block content %}{% endblock %}
   </main>
-  <script src="/static/vendor/lucide.min.js"></script>
-  <script src="/static/app.js"></script>
+  <script src="/static/vendor/lucide.min.js?v={{ static_v }}"></script>
+  <script src="/static/app.js?v={{ static_v }}"></script>
 </body>
 </html>

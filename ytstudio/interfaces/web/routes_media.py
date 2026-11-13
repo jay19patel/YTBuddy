@@ -1,6 +1,7 @@
 """Master upload (chunked, resumable), Shorts review, media files."""
 
 import os
+import shlex
 from pathlib import Path
 from typing import Any
 
@@ -11,7 +12,9 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from ytstudio.config import get_settings
 from ytstudio.container import get_container
 from ytstudio.domain.errors import PermanentError
+from ytstudio.domain.schedule import parse_local_datetime
 from ytstudio.interfaces.web.app import Page, back, csrf, page, queries, render
+from ytstudio.interfaces.web.routes_ops import publish_enabled
 from ytstudio.interfaces.web.routes_pages import started
 
 router = APIRouter()
@@ -32,6 +35,8 @@ def shorts(request: Request, p: Page = Depends(page)) -> Response:
     c = get_container()
     with c.uow() as uow:
         files = uow.media.list(p.user.id, p.channel_id)
+        tz = uow.schedules.get(p.channel_id).timezone
+        keywords = uow.channels.get(p.channel_id).keywords
     status = request.query_params.get("status") or "needs_review"
     rows = queries().assets(p.user.id, p.channel_id, ["short"], status=status if status != "all" else None)
     chapters = queries().assets(p.user.id, p.channel_id, ["chapters"], limit=3)
@@ -41,9 +46,13 @@ def shorts(request: Request, p: Page = Depends(page)) -> Response:
         "shorts.html",
         files=files,
         shorts=rows,
+        tz=tz,
+        default_tags=", ".join(["Shorts", *shlex.split(keywords)[:6]]) if keywords.count('"') % 2 == 0 else "Shorts",
         status=status,
         chapters=chapters,
-        run=queries().run(p.user.id, int(run_id)) if run_id and run_id.isdigit() else None,
+        run=queries().run(p.user.id, int(run_id))
+        if run_id and run_id.isdigit()
+        else queries().latest_run(p.user.id, p.channel_id, "shorts"),
     )
 
 
@@ -131,6 +140,13 @@ def link_video(media_id: int, video_id: str = Form(""), p: Page = Depends(csrf))
     return back("/shorts", "saved")
 
 
+@router.post("/media/{media_id}/delete")
+def delete_master(media_id: int, p: Page = Depends(csrf)) -> Response:
+    get_container().shorts.delete_master(p.user.id, media_id)
+    part_path(media_id).unlink(missing_ok=True)  # an unfinished upload leaves a partial file behind
+    return back("/shorts", "master_deleted")
+
+
 @router.post("/media/{media_id}/shorts")
 def make_shorts(media_id: int, p: Page = Depends(csrf)) -> Response:
     return started("/shorts", get_container().shorts.start(p.user.id, media_id))
@@ -140,6 +156,26 @@ def make_shorts(media_id: int, p: Page = Depends(csrf)) -> Response:
 def trim(asset_id: int, start: float = Form(...), end: float = Form(...), p: Page = Depends(csrf)) -> Response:
     c = get_container()
     return started("/shorts", c.shorts.trim(p.user.id, asset_id, start, end, c.clock.now()))
+
+
+@router.post("/shorts/{asset_id}/upload", dependencies=[Depends(publish_enabled)])
+def upload_short(
+    asset_id: int,
+    title: str = Form(""),
+    description: str = Form(""),
+    tags: str = Form(""),
+    privacy: str = Form("private"),
+    publish_at: str = Form(""),
+    p: Page = Depends(csrf),
+) -> Response:
+    c = get_container()
+    when = None
+    if publish_at.strip():
+        with c.uow() as uow:
+            when = parse_local_datetime(publish_at, uow.schedules.get(p.channel_id).timezone, c.clock.now())
+    tag_list = [t.strip() for t in tags.split(",") if t.strip()]
+    c.shorts.publish(p.user.id, asset_id, title, description, tag_list, privacy, when, c.clock.now())
+    return back("/shorts", "short_uploaded")
 
 
 @router.get("/files/asset/{asset_id}/{what}")
