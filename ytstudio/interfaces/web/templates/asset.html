@@ -47,7 +47,7 @@
     <ol>{% for h in d.hooks %}<li><span class="score">{{ h.panel_score }}</span> {{ h.hook }} <span class="muted">{{ h.formula }}; weakest {{ h.weakest | lower }}: {{ h.fix }}</span></li>{% endfor %}</ol>
     <div class="row">
       <label class="field" for="try-hook">Try your own hook</label>
-      <div class="row-inline"><input type="text" id="try-hook" data-hook-input><button class="btn small" type="button" data-hook-score>Score</button></div>
+      <div class="row-inline"><input type="text" id="try-hook" data-hook-input class="!w-auto flex-1 min-w-48" placeholder="Type an opening line to score"><button class="btn small" type="button" data-hook-score>Score</button></div>
       <p class="hint" data-hook-result aria-live="polite"></p>
     </div>
     <form method="post" action="/assets/{{ a.id }}/edit"><input type="hidden" name="csrf" value="{{ csrf }}">

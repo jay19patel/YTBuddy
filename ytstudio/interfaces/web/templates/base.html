@@ -8,47 +8,84 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="/static/theme.js"></script>
   <link rel="stylesheet" href="/static/app.css">
 </head>
 <body {% if not user %}class="bare"{% endif %}>
   {% if user %}
-  <nav class="rail" aria-label="Channels and pages">
-    <div class="brand">YTStudio</div>
-    {% macro delta(n) %}<dd class="{{ 'up' if n > 0 else 'down' if n < 0 else 'flat' }}">{{ "+" if n >= 0 else "−" }}{{ (n | abs) | short }}</dd>{% endmacro %}
-    {% for a in accounts %}
-      {% set ch = a.change %}
-      <a class="acct" href="/use/{{ a.id }}" {% if current and a.id == current.id %}aria-current="true"{% endif %}>
-        <img src="{{ a.thumb }}" alt="" referrerpolicy="no-referrer">
-        <div>
-          <strong>{{ a.title }}</strong>
-          <dl>
-            <dt>{{ a.subscribers | short }}</dt><dd>subscribers</dd>{% if ch %}{{ delta(ch.subscribers) }}{% else %}<dd></dd>{% endif %}
-            <dt>{{ a.views | short }}</dt><dd>views</dd>{% if ch %}{{ delta(ch.views) }}{% else %}<dd></dd>{% endif %}
-            <dt>{{ a.videos | short }}</dt><dd>videos</dd><dd></dd>
-          </dl>
-          {% if ch %}
-            <span class="since">{{ "Change since yesterday" if (today - ch.since).days == 1 else "Change since " ~ ch.since.strftime("%-d %b") }}</span>
-          {% endif %}
-        </div>
-      </a>
-    {% endfor %}
-    <a class="add" href="/connect">+ Add channel</a>
+  {% macro delta(n) %}<span class="{{ 'up' if n > 0 else 'down' if n < 0 else 'flat' }}">{{ "+" if n >= 0 else "−" }}{{ (n | abs) | short }}</span>{% endmacro %}
+  <div class="topbar">
+    <button class="icon-btn" type="button" data-menu aria-label="Open menu" aria-controls="rail" aria-expanded="false"><i data-lucide="menu"></i></button>
+    <span class="brand"><i data-lucide="clapperboard"></i>YTStudio</span>
+    {% if current %}<img class="avatar sm" src="{{ current.thumb }}" alt="" referrerpolicy="no-referrer">{% endif %}
+  </div>
+  <div class="scrim" data-menu-close hidden></div>
+
+  <aside class="rail" id="rail" aria-label="Channels and pages">
+    <a class="brand" href="/"><i data-lucide="clapperboard"></i>YTStudio</a>
+
+    <details class="switcher"{% if not current %} open{% endif %}>
+      <summary>
+        {% if current %}
+          <img class="avatar" src="{{ current.thumb }}" alt="" referrerpolicy="no-referrer">
+          <span class="grow"><strong>{{ current.title }}</strong><small>{{ current.subscribers | short }} subscribers</small></span>
+        {% else %}
+          <span class="grow"><strong>Choose a channel</strong><small>{{ accounts | length }} connected</small></span>
+        {% endif %}
+        <i data-lucide="chevrons-up-down"></i>
+      </summary>
+      <div class="switch-list">
+        {% for a in accounts %}
+          {% set ch = a.change %}
+          <a class="acct" href="/use/{{ a.id }}" {% if current and a.id == current.id %}aria-current="true"{% endif %}>
+            <img class="avatar" src="{{ a.thumb }}" alt="" referrerpolicy="no-referrer">
+            <div>
+              <strong>{{ a.title }}</strong>
+              <dl>
+                <dt>{{ a.subscribers | short }}</dt><dd>subscribers</dd>{% if ch %}<dd>{{ delta(ch.subscribers) }}</dd>{% else %}<dd></dd>{% endif %}
+                <dt>{{ a.views | short }}</dt><dd>views</dd>{% if ch %}<dd>{{ delta(ch.views) }}</dd>{% else %}<dd></dd>{% endif %}
+                <dt>{{ a.videos | short }}</dt><dd>videos</dd><dd></dd>
+              </dl>
+              {% if ch %}
+                <span class="since">{{ "Change since yesterday" if (today - ch.since).days == 1 else "Change since " ~ ch.since.strftime("%-d %b") }}</span>
+              {% endif %}
+            </div>
+          </a>
+        {% endfor %}
+        <a class="add" href="/connect"><i data-lucide="plus"></i>Add channel</a>
+      </div>
+    </details>
+
+    {% if current and not account_page %}
+    {% set groups = [
+      ("Overview", [("/insights", "Insights", "layout-dashboard"), ("/today", "Today", "sun")]),
+      ("Create", [("/scripts", "Scripts", "file-text"), ("/ideas", "Ideas", "lightbulb"), ("/shorts", "Shorts", "smartphone"), ("/trends", "Trends", "trending-up")] + ([("/publish", "Publish", "upload")] if flags.publish else [])),
+      ("Manage", [("/jobs", "Jobs", "activity"), ("/settings", "Settings", "settings")]),
+    ] %}
+    <nav class="tabs" aria-label="Channel sections">
+      {% for title, items in groups %}
+        <span class="group">{{ title }}</span>
+        {% for href, label, icon in items %}
+          <a href="{{ href }}" {% if path.startswith(href) %}aria-current="page"{% endif %}><i data-lucide="{{ icon }}"></i>{{ label }}</a>
+        {% endfor %}
+      {% endfor %}
+    </nav>
+    {% endif %}
+
     <div class="rail-foot">
-      <strong>{{ user.email }}</strong>
-      <form method="post" action="/logout"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="rail-btn" type="submit">Sign out</button></form>
-      <a class="rail-link" href="/llm" {% if path.startswith("/llm") %}aria-current="page"{% endif %}>LLM · AI models and keys</a>
+      <div class="me">
+        <strong title="{{ user.email }}">{{ user.email }}</strong>
+        <form method="post" action="/logout"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="rail-btn" type="submit"><i data-lucide="log-out"></i>Sign out</button></form>
+      </div>
+      <a class="rail-link" href="/llm" {% if path.startswith("/llm") %}aria-current="page"{% endif %}><i data-lucide="sparkles"></i>LLM · AI models and keys</a>
+      <button class="rail-link" type="button" data-theme-toggle><i data-lucide="moon"></i><span>Switch theme</span></button>
     </div>
-  </nav>
+  </aside>
   {% endif %}
 
   <main>
-    {% if current and not account_page %}<p class="chan"><img src="{{ current.thumb }}" alt="" referrerpolicy="no-referrer"> Channel: {{ current.title }}</p>{% endif %}
-    {% if current and not account_page %}<nav class="tabs" aria-label="Channel sections">
-      {% for href, label in [("/insights", "Insights"), ("/today", "Today"), ("/scripts", "Scripts"), ("/ideas", "Ideas"), ("/shorts", "Shorts"), ("/trends", "Trends")] + ([("/publish", "Publish")] if flags.publish else []) + [("/jobs", "Jobs"), ("/settings", "Settings")] %}
-        <a href="{{ href }}" {% if path.startswith(href) %}aria-current="page"{% endif %}>{{ label }}</a>
-      {% endfor %}
-    </nav>{% endif %}
-    {% if success %}<div class="notice ok" role="status">{{ success | urlize }}
+    {% if current and not account_page %}<p class="chan"><img class="avatar sm" src="{{ current.thumb }}" alt="" referrerpolicy="no-referrer"> Channel: {{ current.title }}</p>{% endif %}
+    {% if success %}<div class="notice ok" role="status"><i data-lucide="circle-check"></i><div>{{ success | urlize }}
       {% if live %}
         <div class="keys">
           <span>Server</span><span><code>{{ live.server }}</code><button class="copy" data-copy="{{ live.server }}">Copy</button></span>
@@ -56,13 +93,14 @@
         </div>
         <p class="hint">In OBS: Settings, Stream, Service "Custom", paste both, then Start Streaming. You go live automatically.</p>
       {% endif %}
-    </div>{% endif %}
-    {% if error %}<div class="notice err" role="alert">{{ error | urlize }}</div>{% endif %}
+    </div></div>{% endif %}
+    {% if error %}<div class="notice err" role="alert"><i data-lucide="triangle-alert"></i><div>{{ error | urlize }}</div></div>{% endif %}
     {% if current and current.status == "reconnect_needed" %}
-      <div class="banner" role="alert"><strong>{{ current.title }} needs reconnecting.</strong> Google access expired or was revoked, so syncs and daily runs for it are paused. <a href="/connect">Reconnect</a></div>
+      <div class="banner" role="alert"><i data-lucide="plug-zap"></i><div><strong>{{ current.title }} needs reconnecting.</strong> Google access expired or was revoked, so syncs and daily runs for it are paused. <a href="/connect">Reconnect</a></div></div>
     {% endif %}
     {% block content %}{% endblock %}
   </main>
+  <script src="/static/vendor/lucide.min.js"></script>
   <script src="/static/app.js"></script>
 </body>
 </html>

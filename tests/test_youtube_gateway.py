@@ -149,3 +149,22 @@ def test_undecryptable_token_marks_reconnect():
     with pytest.raises(ReconnectNeeded):
         g.creds("UCmissing")
     assert seen == ["UCmissing"]
+
+
+def test_a_competitor_with_no_uploads_playlist_is_skipped_not_fatal():
+    missing = json.dumps(
+        {
+            "error": {
+                "code": 404,
+                "message": "The playlist identified with the request's playlistId parameter cannot be found.",
+                "errors": [{"reason": "playlistNotFound"}],
+            }
+        }
+    )
+    other = {
+        "items": [
+            {**CHANNEL["items"][0], "id": "UCgone", "contentDetails": {"relatedPlaylists": {"uploads": "UUgone"}}}
+        ]
+    }
+    g, _ = gateway([ok(other), ({"status": "404"}, missing)])
+    assert g.recent_views(["UCgone"], using="UCme") == {"UCgone": []}

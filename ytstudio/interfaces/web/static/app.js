@@ -181,3 +181,24 @@ if (form) {
     xhr.send(new FormData(form));
   });
 }
+
+// Icons (vendored Lucide), mobile menu, theme toggle, and notices that fade out by themselves.
+if (window.lucide) lucide.createIcons();
+const setMenu = (open) => {
+  document.body.classList.toggle("menu-open", open);
+  document.querySelector("[data-menu]")?.setAttribute("aria-expanded", String(open));
+  const scrim = document.querySelector(".scrim");
+  if (scrim) scrim.hidden = !open;
+};
+document.querySelector("[data-menu]")?.addEventListener("click", () => setMenu(!document.body.classList.contains("menu-open")));
+document.querySelector(".scrim")?.addEventListener("click", () => setMenu(false));
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") setMenu(false); });
+document.querySelector("[data-theme-toggle]")?.addEventListener("click", () => {
+  const root = document.documentElement;
+  const dark = root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  root.dataset.theme = dark ? "light" : "dark";
+  try { localStorage.setItem("theme", root.dataset.theme); } catch (_) { /* keep for this visit only */ }
+});
+document.querySelectorAll(".notice.ok").forEach((n) => setTimeout(() => {
+  n.style.transition = "opacity .4s"; n.style.opacity = "0"; setTimeout(() => n.remove(), 400);
+}, 8000));

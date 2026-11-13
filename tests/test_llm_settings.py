@@ -164,7 +164,7 @@ def test_test_button_and_model_list_refresh(container, user_and_channel, db_url)
 def test_the_llm_link_sits_under_sign_out_and_the_page_has_no_channel_tabs(container, user_and_channel, db_url):
     client, _ = logged_in(db_url, user_and_channel[0])
     today = client.get("/today").text
-    assert today.index("Sign out") < today.index('href="/llm"') < today.index("</nav>")  # in the sidebar footer
+    assert today.index("Sign out") < today.index('href="/llm"') < today.index("</aside>")  # in the sidebar footer
     page = client.get("/llm").text
     assert 'class="tabs"' not in page and "Channel:" not in page and "/settings/llm" not in page
     settings_page = client.get("/settings").text

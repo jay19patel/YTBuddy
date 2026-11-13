@@ -375,11 +375,16 @@ class YouTubeGateway:
         for cid, info in infos.items():
             if not info.uploads_playlist:
                 continue
-            resp = self.execute(
-                yt.playlistItems().list(part="contentDetails", playlistId=info.uploads_playlist, maxResults=15),
-                COST["list"],
-                critical=False,
-            )
+            try:
+                resp = self.execute(
+                    yt.playlistItems().list(part="contentDetails", playlistId=info.uploads_playlist, maxResults=15),
+                    COST["list"],
+                    critical=False,
+                )
+            except PermanentError as e:
+                if "playlistNotFound" not in str(e) and "cannot be found" not in str(e):
+                    raise
+                resp = {}  # a hidden, empty or deleted channel must not fail the whole trends step
             vids = [it["contentDetails"]["videoId"] for it in resp.get("items", [])]
             views = [v.views for v in self.videos(vids, using, critical=False)] if vids else []
             self.cache.set(f"recent:{cid}", views, STATS_TTL)
