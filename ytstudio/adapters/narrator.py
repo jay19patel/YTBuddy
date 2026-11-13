@@ -1,12 +1,20 @@
-"""Text to speech with Piper (open source, runs on the CPU, no account, no network after the first voice download)."""
+"""Text to speech. Microsoft's neural voices are the main voice (natural, Indian English and Hindi, and they report when
+every word is said). Piper is the offline fallback: open source, runs on the CPU, no account, no network."""
 
+import asyncio
+import logging
 import os
+import subprocess
 import tempfile
 import urllib.request
 import wave
 from pathlib import Path
+from typing import Any
 
-from ytstudio.domain.errors import PermanentError, TransientError
+from ytstudio.domain.errors import DomainError, PermanentError, TransientError
+from ytstudio.domain.video import voice_language
+
+log = logging.getLogger(__name__)
 
 VOICES_URL = "https://huggingface.co/rhasspy/piper-voices/resolve/main"
 SAMPLE_RATE = 22050
@@ -47,9 +55,9 @@ class PiperNarrator:
             self._loaded[name] = PiperVoice.load(self._fetch(name))
         return self._loaded[name]
 
-    def speak(self, lines: list[tuple[str, float]], language: str, out: Path) -> list[tuple[float, float]]:
+    def speak(self, lines: list[tuple[str, float]], language: str, out: Path) -> list[dict[str, Any]]:
         voice = self._voice(language)
-        timings: list[tuple[float, float]] = []
+        timings: list[dict[str, Any]] = []
         t = 0.0
         with tempfile.TemporaryDirectory() as d, wave.open(str(out), "wb") as dest:
             dest.setnchannels(1)
@@ -67,6 +75,94 @@ class PiperNarrator:
                 dest.writeframes(frames)
                 silence = int(pause * SAMPLE_RATE)
                 dest.writeframes(b"\x00\x00" * silence)
-                timings.append((t, t + seconds))
+                timings.append({"start": t, "end": t + seconds, "words": []})
                 t += seconds + pause
         return timings
+
+
+EDGE_RATE = 24000  # what the service sends: 24 kHz mono MP3
+EDGE_TRIES = 3
+
+
+def decode_to_wav(mp3: bytes, workdir: Path, name: str) -> Path:
+    src, dest = workdir / f"{name}.mp3", workdir / f"{name}.wav"
+    src.write_bytes(mp3)
+    p = subprocess.run(
+        ["ffmpeg", "-nostdin", "-v", "error", "-y", "-i", str(src), "-ar", str(EDGE_RATE), "-ac", "1", str(dest)],
+        capture_output=True,
+        check=False,
+    )
+    if p.returncode:
+        raise TransientError(f"the voice sent audio that could not be read: {p.stderr.decode(errors='replace')[-200:]}")
+    return dest
+
+
+class EdgeNarrator:
+    """Microsoft Edge's read-aloud neural voices through the edge-tts package. Free, no key, needs internet."""
+
+    def __init__(self, parallel: int = 4):
+        self.parallel = parallel
+
+    async def _one(self, edge_tts: Any, text: str, voice: str, gate: asyncio.Semaphore) -> tuple[bytes, list[Any]]:
+        async with gate:
+            last: Exception | None = None
+            for attempt in range(EDGE_TRIES):
+                try:
+                    audio, words = bytearray(), []
+                    async for ev in edge_tts.Communicate(text, voice, boundary="WordBoundary").stream():
+                        if ev["type"] == "audio":
+                            audio += ev["data"]
+                        elif ev["type"] == "WordBoundary":
+                            words.append((ev["offset"] / 1e7, ev["duration"] / 1e7, ev["text"]))
+                    if audio:
+                        return bytes(audio), words
+                    last = RuntimeError("no audio came back")
+                except Exception as e:
+                    last = e
+                await asyncio.sleep(1 + attempt)
+            raise TransientError(f"the Microsoft voice service did not answer: {last}")
+
+    async def _all(self, edge_tts: Any, lines: list[tuple[str, float]], voice: str) -> list[tuple[bytes, list[Any]]]:
+        gate = asyncio.Semaphore(self.parallel)
+        return list(await asyncio.gather(*(self._one(edge_tts, t, voice, gate) for t, _ in lines)))
+
+    def speak(self, lines: list[tuple[str, float]], voice: str, out: Path) -> list[dict[str, Any]]:
+        try:
+            import edge_tts
+        except ImportError as e:
+            raise PermanentError("edge-tts is not installed (uv sync --extra media)") from e
+        spoken = asyncio.run(self._all(edge_tts, lines, voice))
+        timings: list[dict[str, Any]] = []
+        t = 0.0
+        with tempfile.TemporaryDirectory() as d, wave.open(str(out), "wb") as dest:
+            dest.setnchannels(1)
+            dest.setsampwidth(2)
+            dest.setframerate(EDGE_RATE)
+            for i, ((_, pause), (mp3, words)) in enumerate(zip(lines, spoken, strict=True)):
+                with wave.open(str(decode_to_wav(mp3, Path(d), str(i))), "rb") as r:
+                    frames, seconds = r.readframes(r.getnframes()), r.getnframes() / EDGE_RATE
+                dest.writeframes(frames)
+                dest.writeframes(b"\x00\x00" * int(pause * EDGE_RATE))
+                timings.append(
+                    {
+                        "start": t,
+                        "end": t + seconds,
+                        "words": [{"text": w, "start": t + a, "end": t + a + dur} for a, dur, w in words],
+                    }
+                )
+                t += seconds + pause
+        return timings
+
+
+class VoiceNarrator:
+    """The Microsoft voice first; if the service cannot be reached, the offline Piper voice of the same language."""
+
+    def __init__(self, online: EdgeNarrator, offline: PiperNarrator):
+        self.online, self.offline = online, offline
+
+    def speak(self, lines: list[tuple[str, float]], voice: str, out: Path) -> tuple[list[dict[str, Any]], str]:
+        try:
+            return self.online.speak(lines, voice, out), "Microsoft neural voice"
+        except DomainError as e:
+            log.warning("online voice failed, using the offline voice: %s", e)
+        return self.offline.speak(lines, voice_language(voice), out), "Offline voice (Piper)"

@@ -95,55 +95,6 @@ def caption_frame(words: list[str], current: int, path: Path) -> None:
     img.save(path)
 
 
-VIDEO_SIZES = {True: (1080, 1920), False: (1920, 1080)}  # vertical (Shorts) or landscape
-INK, ACCENT, PAPER = (20, 20, 20), (229, 50, 45), (255, 255, 255)
-
-
-def chunk_words(words: list[str], size: int = 8) -> list[list[str]]:
-    """Even groups of at most `size` words, so a subtitle never shows a long sentence at once."""
-    if not words:
-        return []
-    groups = -(-len(words) // size)
-    each = -(-len(words) // groups)
-    return [words[i : i + each] for i in range(0, len(words), each)]
-
-
-def subtitle_words(units: list[dict[str, Any]]) -> list[tuple[float, float, int, list[str]]]:
-    """(start, end, index of the word being said, words on screen) for every word of every spoken line.
-    A line's time is shared out by word length, one subtitle chunk after another."""
-    cues: list[Cue] = []
-    for u in units:
-        chunks = chunk_words(str(u["text"]).split())
-        total = sum(len(w) + 1 for c in chunks for w in c) or 1
-        t = float(u["start"])
-        for c in chunks:
-            dt = (float(u["end"]) - float(u["start"])) * sum(len(w) + 1 for w in c) / total
-            cues.append(Cue(t, t + dt, " ".join(c)))
-            t += dt
-    return words_timed(cues, 0.0, max((c.end for c in cues), default=0.0) + 1)
-
-
-def subtitle_frame(words: list[str], current: int, size: tuple[int, int], path: Path) -> None:
-    """Black text on a white screen; the word being said is red."""
-    width, height = size
-    vertical = height > width
-    img = Image.new("RGB", size, PAPER)
-    d = ImageDraw.Draw(img)
-    f = _font_for(" ".join(words), 92 if vertical else 84)
-    lines = textwrap.wrap(" ".join(words), width=16 if vertical else 30) or [""]
-    step = 118 if vertical else 108
-    y = (height - len(lines) * step) // 2
-    k = 0
-    for line in lines:
-        x = (width - d.textlength(line, font=f)) / 2
-        for w in line.split():
-            d.text((x, y), w, font=f, fill=ACCENT if k == current else INK)
-            x += d.textlength(w + " ", font=f)
-            k += 1
-        y += step
-    img.save(path, compress_level=1)
-
-
 class FFmpegMediaProcessor:
     def duration(self, path: Path) -> float:
         p = subprocess.run(
@@ -219,40 +170,41 @@ class FFmpegMediaProcessor:
             os.replace(part, out)
 
     def encode_audio(self, wav: Path, out: Path) -> None:
+        """Studio finish for a synthetic voice: roll off the rumble, even out the level, then set it to -16 LUFS."""
         part = out.with_name(f".{out.name}.part.mp3")
-        _ffmpeg("-i", str(wav), "-c:a", "libmp3lame", "-q:a", "3", str(part), timeout=600)
+        chain = (
+            "aformat=channel_layouts=mono,highpass=f=70,"
+            "acompressor=threshold=-21dB:ratio=2.5:attack=12:release=180:makeup=2,"
+            "loudnorm=I=-16:TP=-1.5:LRA=9,aformat=channel_layouts=mono"
+        )
+        _ffmpeg("-i", str(wav), "-af", chain, "-ar", "44100", "-c:a", "libmp3lame", "-q:a", "2", str(part), timeout=600)
         os.replace(part, out)
 
-    def render_subtitle_video(self, units: list[dict[str, Any]], audio: Path, vertical: bool, out: Path) -> None:
-        """White screen, black subtitles that follow the voice. One picture per spoken word, held until the next."""
-        size = VIDEO_SIZES[vertical]
-        words = subtitle_words(units)
-        if not words:
+    def render_subtitle_video(
+        self, units: list[dict[str, Any]], audio: Path, vertical: bool, look: str, out: Path
+    ) -> None:
+        """Animated typography on a plain screen, timed to the voice. See kinetic.py for how the words move."""
+        from ytstudio.adapters.kinetic import build_ass
+        from ytstudio.domain.video import look_of
+
+        if not units:
             raise PermanentError("There are no words to show as subtitles.")
-        total = self.duration(audio)
+        style, total = look_of(look), self.duration(audio)
+        width, height = (1080, 1920) if vertical else (1920, 1080)
         out.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory() as d:
-            tmp = Path(d)
-            blank = tmp / "blank.png"
-            Image.new("RGB", size, PAPER).save(blank, compress_level=1)
-            lines = ["ffconcat version 1.0"]
-            if words[0][0] > 0.02:
-                lines += [f"file '{blank}'", f"duration {words[0][0]:.3f}"]
-            last = blank
-            for n, (t0, _t1, idx, ws) in enumerate(words):
-                nxt = words[n + 1][0] if n + 1 < len(words) else max(total, t0 + 0.1)
-                last = tmp / f"w{n:05d}.png"
-                subtitle_frame(ws, idx, size, last)
-                lines += [f"file '{last}'", f"duration {max(nxt - t0, 0.04):.3f}"]
-            lines.append(f"file '{last}'")
-            concat = tmp / "subs.ffconcat"
-            concat.write_text("\n".join(lines) + "\n")
+            ass = Path(d) / "subs.ass"
+            ass.write_text(build_ass(units, total, vertical, style), encoding="utf-8")
+            fonts = Path("/usr/share/fonts/truetype/noto")
+            esc = lambda path: str(path).replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")  # noqa: E731
+            opts = f":fontsdir={esc(fonts)}" if fonts.exists() else ""
             part = out.with_name(f".{out.name}.part.mp4")
             _ffmpeg(
-                "-f", "concat", "-safe", "0", "-i", str(concat), "-i", str(audio),
-                "-vf", "fps=30,format=yuv420p",
-                "-c:v", "libx264", "-preset", "veryfast", "-crf", "24",
-                "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", "-shortest",
+                "-f", "lavfi", "-i", f"color=c=0x{style.bg}:s={width}x{height}:r=30:d={total:.3f}",
+                "-i", str(audio),
+                "-vf", f"ass=filename={esc(ass)}{opts},format=yuv420p",
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "22",
+                "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", "-shortest",
                 str(part),
             )  # fmt: skip
             os.replace(part, out)

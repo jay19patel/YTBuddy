@@ -96,8 +96,8 @@ def scripts(request: Request, p: Page = Depends(page)) -> Response:
 
 
 @router.post("/scripts/{script_id}/video")
-def make_video(script_id: int, voice: str = Form(""), p: Page = Depends(csrf)) -> Response:
-    return started(f"/assets/{script_id}", get_container().review.make_video(p.user.id, script_id, voice))
+def make_video(script_id: int, voice: str = Form(""), look: str = Form(""), p: Page = Depends(csrf)) -> Response:
+    return started(f"/assets/{script_id}", get_container().review.make_video(p.user.id, script_id, voice, look))
 
 
 @router.post("/ideas/{idea_id}/develop")

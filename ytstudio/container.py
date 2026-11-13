@@ -209,7 +209,7 @@ class Container:
     @cached_property
     def media(self) -> Any:
         from ytstudio.adapters.media import FasterWhisperTranscriber, FFmpegMediaProcessor, PillowImageRenderer
-        from ytstudio.adapters.narrator import PiperNarrator
+        from ytstudio.adapters.narrator import EdgeNarrator, PiperNarrator, VoiceNarrator
 
         return self._pick(
             "media",
@@ -217,8 +217,11 @@ class Container:
                 "media": FFmpegMediaProcessor(),
                 "images": PillowImageRenderer(),
                 "transcriber": FasterWhisperTranscriber(self.s.whisper_model),
-                "narrator": PiperNarrator(
-                    self.s.media_dir / "voices", {"en": self.s.tts_voice_en, "hi": self.s.tts_voice_hi}
+                "narrator": VoiceNarrator(
+                    EdgeNarrator(),
+                    PiperNarrator(
+                        self.s.media_dir / "voices", {"en": self.s.piper_voice_en, "hi": self.s.piper_voice_hi}
+                    ),
                 ),
             },
         )

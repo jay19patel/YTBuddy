@@ -44,8 +44,8 @@ class Settings(BaseSettings):
     max_master_bytes: int = 20 * 1024**3
 
     whisper_model: str = "small"
-    tts_voice_en: str = "en_US-lessac-medium"  # Piper voices, downloaded once into MEDIA_DIR/voices
-    tts_voice_hi: str = "hi_IN-priyamvada-medium"
+    piper_voice_en: str = "en_US-lessac-medium"  # offline fallback voices, downloaded once into MEDIA_DIR/voices
+    piper_voice_hi: str = "hi_IN-priyamvada-medium"
     enable_manual_publish: bool = True  # existing upload/live pages
     enable_ytdlp: bool = False  # own videos only; check YouTube's terms first
     enable_auto_publish: bool = False  # never implemented as on; placeholder flag stays off

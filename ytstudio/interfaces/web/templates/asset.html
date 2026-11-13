@@ -61,10 +61,11 @@
       {% endif %}
       <form method="post" action="/scripts/{{ a.id }}/video" class="actions">
         <input type="hidden" name="csrf" value="{{ csrf }}">
-        <select name="voice" aria-label="Voice"><option value="">Voice: automatic</option><option value="en">English voice</option><option value="hi">Hindi voice</option></select>
+        <select name="voice" aria-label="Voice"><option value="">Voice: automatic</option>{% for v in voices %}<option value="{{ v.id }}">{{ v.label }}</option>{% endfor %}</select>
+        <select name="look" aria-label="Look">{% for x in looks %}<option value="{{ x.id }}">{{ x.label }}</option>{% endfor %}</select>
         <button class="btn" type="submit" data-busy="Starting…"><i data-lucide="clapperboard"></i>{{ "Make the video again" if d.video_key else "Generate video" }}</button>
       </form>
-      <p class="hint">Reads the script aloud and shows it as black subtitles on a white screen ({{ "vertical, for a Short" if (d | asset_format) == "short" else "widescreen, for a long video" }}). The word being said is red. Nothing is uploaded.</p>
+      <p class="hint">A natural neural voice reads the script and each word pops onto the screen as it is said ({{ "vertical, for a Short" if (d | asset_format) == "short" else "widescreen, for a long video" }}). {% if d.video_engine %}Last voice: {{ d.video_engine }}. {% endif %}Nothing is uploaded.</p>
     </div>
     {% if d.format == "short" %}
       <h3>Title <button class="copy" type="button" data-copy="{{ d.title }}">Copy</button></h3><p>{{ d.title }}</p>

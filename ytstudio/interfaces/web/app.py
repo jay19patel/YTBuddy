@@ -23,6 +23,7 @@ from ytstudio.config import get_settings
 from ytstudio.container import get_container
 from ytstudio.domain.errors import DomainError, NotFound
 from ytstudio.domain.models import format_of
+from ytstudio.domain.video import LOOKS, VOICES
 from ytstudio.logging_setup import request_id_var, setup_logging
 
 HERE = Path(__file__).parent
@@ -91,6 +92,8 @@ def asset_format(d: dict[str, Any]) -> str:
     return format_of(d if "format" in d or "effort" in d else d.get("idea") or {})
 
 
+templates.env.globals["voices"] = VOICES
+templates.env.globals["looks"] = LOOKS
 templates.env.filters["asset_format"] = asset_format
 templates.env.filters["is_manual"] = lambda d: (
     d.get("source") == "manual" or (d.get("idea") or {}).get("source") == "manual"

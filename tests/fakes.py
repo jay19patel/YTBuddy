@@ -199,7 +199,7 @@ class RecordingNotifier:
 class FakeMedia:
     def __init__(self) -> None:
         self.renders: list[tuple[float, float]] = []
-        self.videos: list[tuple[int, bool]] = []
+        self.videos: list[tuple[int, bool, str]] = []
 
     def duration(self, path: Path) -> float:
         return 600.0
@@ -214,8 +214,10 @@ class FakeMedia:
     def encode_audio(self, wav: Path, out: Path) -> None:
         out.write_bytes(b"mp3")
 
-    def render_subtitle_video(self, units: list[dict[str, Any]], audio: Path, vertical: bool, out: Path) -> None:
-        self.videos.append((len(units), vertical))
+    def render_subtitle_video(
+        self, units: list[dict[str, Any]], audio: Path, vertical: bool, look: str, out: Path
+    ) -> None:
+        self.videos.append((len(units), vertical, look))
         out.write_bytes(b"mp4")
 
 
@@ -223,10 +225,10 @@ class FakeNarrator:
     def __init__(self) -> None:
         self.spoken: list[tuple[list[tuple[str, float]], str]] = []
 
-    def speak(self, lines: list[tuple[str, float]], language: str, out: Path) -> list[tuple[float, float]]:
-        self.spoken.append((lines, language))
+    def speak(self, lines: list[tuple[str, float]], voice: str, out: Path) -> tuple[list[dict[str, Any]], str]:
+        self.spoken.append((lines, voice))
         out.write_bytes(b"wav")
-        return [(i * 2.0, i * 2.0 + 1.5) for i in range(len(lines))]
+        return [{"start": i * 2.0, "end": i * 2.0 + 1.5, "words": []} for i in range(len(lines))], "Fake voice"
 
 
 class FakeImages:

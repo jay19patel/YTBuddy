@@ -8,9 +8,10 @@ from typing import Any
 from ytstudio.application.pipeline import Context, Step, register
 from ytstudio.domain.errors import PermanentError
 from ytstudio.domain.models import Asset, Queue, format_of
+from ytstudio.domain.video import default_voice
 
 SENTENCE_END = re.compile(r"(?<=[.!?।])\s+|\n+")
-PAUSE_SENTENCE, PAUSE_SECTION = 0.2, 0.55
+PAUSE_SENTENCE, PAUSE_SECTION = 0.28, 0.7  # a human reader breathes between thoughts
 
 
 def spoken_lines(sections: list[dict[str, Any]]) -> list[tuple[str, float]]:
@@ -45,20 +46,19 @@ class NarrateScript(Step):
         lines = spoken_lines(a.data.get("script", {}).get("sections", []))
         if not lines:
             raise PermanentError("This script has no spoken words to read.")
-        language = ctx.inputs.get("voice") or ("hi" if ctx.schedule.language == "hi" else "en")
+        voice = ctx.inputs.get("voice") or default_voice(ctx.schedule.language)
         with tempfile.TemporaryDirectory() as d:
             wav, mp3 = Path(d) / "voice.wav", Path(d) / "voice.mp3"
-            timings = self.deps.narrator.speak(lines, language, wav)
+            timings, engine = self.deps.narrator.speak(lines, voice, wav)
             self.deps.media.encode_audio(wav, mp3)
-            key = self.deps.storage.put(
-                mp3, f"audio/{a.channel_id}/{a.id}-{int(self.deps.clock.now().timestamp())}.mp3"
-            )
+            stamp = int(self.deps.clock.now().timestamp())
+            key = self.deps.storage.put(mp3, f"audio/{a.channel_id}/{a.id}-{stamp}.mp3")
         units = [
-            {"text": text, "start": round(t0, 3), "end": round(t1, 3)}
-            for (text, _), (t0, t1) in zip(lines, timings, strict=True)
+            {"text": text, "start": round(t["start"], 3), "end": round(t["end"], 3), "words": t["words"]}
+            for (text, _), t in zip(lines, timings, strict=True)
         ]
-        seconds = round(timings[-1][1], 2)
-        return {"audio_key": key, "seconds": seconds, "units": units, "voice": language}
+        seconds = round(timings[-1]["end"], 2)
+        return {"audio_key": key, "seconds": seconds, "units": units, "voice": voice, "engine": engine}
 
 
 @register
@@ -74,7 +74,11 @@ class RenderScriptVideo(Step):
         with tempfile.TemporaryDirectory() as d:
             out = Path(d) / "video.mp4"
             self.deps.media.render_subtitle_video(
-                n["units"], self.deps.storage.get(n["audio_key"]), format_of(a.data) == "short", out
+                n["units"],
+                self.deps.storage.get(n["audio_key"]),
+                format_of(a.data) == "short",
+                ctx.inputs.get("look", "clean"),
+                out,
             )
             key = self.deps.storage.put(out, f"videos/{a.channel_id}/{a.id}-{stamp}.mp4")
         with self.deps.uow() as uow:
@@ -84,6 +88,8 @@ class RenderScriptVideo(Step):
                 "video_key": key,
                 "audio_key": n["audio_key"],
                 "video_seconds": n["seconds"],
+                "video_voice": n["voice"],
+                "video_engine": n["engine"],
                 "video_made_at": self.deps.clock.now().isoformat(),
             }
             uow.assets.update(fresh)

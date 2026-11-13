@@ -26,6 +26,7 @@ from ytstudio.domain.models import (
     idem_key,
 )
 from ytstudio.domain.schedule import local_day, next_run
+from ytstudio.domain.video import LOOKS, VOICES
 from ytstudio.ports import (
     Analytics,
     Clock,
@@ -474,15 +475,17 @@ class Review:
             uow.commit()
         return added
 
-    def make_video(self, user_id: int, script_asset_id: int, voice: str = "") -> StartResult:
+    def make_video(self, user_id: int, script_asset_id: int, voice: str = "", look: str = "") -> StartResult:
         """Voice-over and subtitle video for one script. Pressing it again makes a new one that replaces the old."""
         with self.uow() as uow:
             a = uow.assets.get(script_asset_id, user_id)
         if a.kind != "script":
             raise PermanentError("Only a script can be turned into a video.")
         inputs: dict[str, Any] = {"asset_id": a.id}
-        if voice in ("en", "hi"):
+        if voice in {v.id for v in VOICES}:
             inputs["voice"] = voice
+        if look in {x.id for x in LOOKS}:
+            inputs["look"] = look
         key = f"{a.channel_id}:video:{a.id}:{int(self.clock.now().timestamp())}"
         return self.runner.start(user_id, a.channel_id, "script_video", key, inputs)
 

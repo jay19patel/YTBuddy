@@ -163,39 +163,86 @@ def test_audio_is_decoded_to_16k_mono_floats_for_whisper(fixture_video):
     assert str(samples.dtype) == "float32" and abs(len(samples) - 10 * 16000) < 2000 and abs(samples).max() > 0.1
 
 
-def test_subtitle_words_are_grouped_and_timed_inside_each_spoken_line():
-    from ytstudio.adapters.media import chunk_words, subtitle_words
+def test_words_take_the_voices_own_timing_and_cards_never_cross_a_sentence_or_a_pause():
+    from ytstudio.adapters.kinetic import cards, timed_words
 
-    assert chunk_words([f"w{i}" for i in range(9)]) == [["w0", "w1", "w2", "w3", "w4"], ["w5", "w6", "w7", "w8"]]
-    assert chunk_words([]) == []
-    words = subtitle_words(
-        [{"text": "one two three four", "start": 1.0, "end": 3.0}, {"text": "five", "start": 4.0, "end": 5.0}]
+    units = [
+        {
+            "text": "Stop overpaying rent today.",
+            "start": 0.0,
+            "end": 2.0,
+            "words": [
+                {"text": w, "start": i * 0.5, "end": i * 0.5 + 0.4}
+                for i, w in enumerate(["Stop", "overpaying", "rent", "today"])
+            ],
+        },
+        {"text": "Ask for receipts", "start": 3.0, "end": 4.5, "words": []},  # no word times: shared out by length
+    ]
+    words = timed_words(units)
+    assert [w.text for w in words] == ["Stop", "overpaying", "rent", "today.", "Ask", "for", "receipts"]
+    assert (
+        words[1].start == 0.5
+        and words[3].text == "today."
+        and words[4].start == 3.0
+        and abs(words[-1].end - 4.5) < 0.01
     )
-    assert [w[3][w[2]] for w in words] == ["one", "two", "three", "four", "five"]
-    assert words[0][0] == 1.0 and abs(words[3][1] - 3.0) < 0.01 and words[4][0] == 4.0
+    groups = cards(words, max_words=3, max_chars=40)
+    assert [[w.text for w in g] for g in groups] == [
+        ["Stop", "overpaying"],  # four words make two even cards, never three and one
+        ["rent", "today."],
+        ["Ask", "for", "receipts"],
+    ]
+
+
+def test_the_subtitle_file_pops_each_word_in_and_draws_both_bars():
+    from ytstudio.adapters.kinetic import build_ass, stamp
+    from ytstudio.domain.video import look_of
+
+    units = [{"text": "Save 12000 rupees", "start": 0.0, "end": 2.0, "words": []}]
+    ass = build_ass(units, 5.0, True, look_of("dark"))
+    assert stamp(3725.5) == "1:02:05.50" and "PlayResX: 1080" in ass and "PlayResY: 1920" in ass
+    words = [ln for ln in ass.splitlines() if ln.startswith("Dialogue: 2")]
+    assert [ln.rsplit("}", 1)[1] for ln in words] == ["SAVE", "12000", "RUPEES"]  # a Short is set in capitals
+    assert all("\\move(" in ln and "\\fad(" in ln and "\\t(0,170" in ln for ln in words)
+    assert (
+        "\\1c&H0AD6FF&" in words[1] and "\\t(" not in words[1].split("\\fad")[0].split("\\1c")[1]
+    )  # numbers keep the accent
+    assert sum(ln.startswith("Dialogue: 1") for ln in ass.splitlines()) == 2  # the progress bar and one card bar
+    assert "&H00FFFFFF" in ass.split("Style: Word")[1]  # dark look: white text
 
 
 @needs_ffmpeg
-def test_subtitle_video_is_white_with_black_text_in_the_right_shape(fixture_video, tmp_path):
+def test_the_subtitle_video_has_the_right_shape_and_shows_moving_text(fixture_video, tmp_path):
+    import subprocess
+
     from PIL import Image
 
-    from ytstudio.adapters.media import FFmpegMediaProcessor, subtitle_frame
+    from ytstudio.adapters.media import FFmpegMediaProcessor
 
+    filters = subprocess.run(["ffmpeg", "-hide_banner", "-filters"], capture_output=True, text=True).stdout
+    if not any(line.split()[1:2] == ["ass"] for line in filters.splitlines()):
+        pytest.skip("this ffmpeg has no libass")
     m = FFmpegMediaProcessor()
     units = [
-        {"text": "Stop overpaying rent today", "start": 0.3, "end": 2.5},
-        {"text": "Ask for receipts", "start": 3.0, "end": 4.5},
+        {"text": "Stop overpaying rent today", "start": 0.3, "end": 2.5, "words": []},
+        {"text": "Ask for receipts", "start": 3.0, "end": 4.5, "words": []},
     ]
     for vertical, size in ((True, (1080, 1920)), (False, (1920, 1080))):
         out = tmp_path / f"v{vertical}.mp4"
-        m.render_subtitle_video(units, fixture_video, vertical, out)
+        m.render_subtitle_video(units, fixture_video, vertical, "clean", out)
         streams = probe(out)["streams"]
         video = next(s for s in streams if s["codec_type"] == "video")
         assert (video["width"], video["height"]) == size and any(s["codec_type"] == "audio" for s in streams)
         assert abs(float(probe(out)["format"]["duration"]) - m.duration(fixture_video)) < 0.6
-    frame = tmp_path / "f.png"
-    subtitle_frame(["Stop", "overpaying", "rent"], 1, (1080, 1920), frame)
-    img = Image.open(frame).convert("RGB")
-    colours = {c for _, c in img.getcolors(maxcolors=100000)}
-    assert img.getpixel((2, 2)) == (255, 255, 255) and (20, 20, 20) in colours  # white screen, black text
-    assert any(c[0] > 200 and c[1] < 90 for c in colours)  # the word being said is red
+    out = tmp_path / "vTrue.mp4"
+    shots = []
+    for i, at in enumerate((0.1, 1.0)):
+        png = tmp_path / f"f{i}.png"
+        subprocess.run(
+            ["ffmpeg", "-v", "error", "-y", "-ss", str(at), "-i", str(out), "-frames:v", "1", str(png)], check=True
+        )
+        shots.append(Image.open(png).convert("RGB"))
+    dark = lambda img: sum(1 for px in img.getdata() if sum(px) < 200)  # noqa: E731
+    assert (
+        dark(shots[0]) < dark(shots[1]) and dark(shots[1]) > 2000
+    )  # white screen; black words arrive as they are said
