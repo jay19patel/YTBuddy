@@ -209,7 +209,7 @@ class Container:
     @cached_property
     def media(self) -> Any:
         from ytstudio.adapters.media import FasterWhisperTranscriber, FFmpegMediaProcessor, PillowImageRenderer
-        from ytstudio.adapters.narrator import EdgeNarrator, PiperNarrator, VoiceNarrator
+        from ytstudio.adapters.narrator import ChatterboxNarrator, EdgeNarrator, PiperNarrator, VoiceNarrator
 
         return self._pick(
             "media",
@@ -222,6 +222,9 @@ class Container:
                     PiperNarrator(
                         self.s.media_dir / "voices", {"en": self.s.piper_voice_en, "hi": self.s.piper_voice_hi}
                     ),
+                    ChatterboxNarrator(self.s.chatterbox_python, self.s.chatterbox_ref_audio)
+                    if self.s.chatterbox_python
+                    else None,
                 ),
             },
         )

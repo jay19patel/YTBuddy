@@ -261,3 +261,34 @@ def test_the_microsoft_voice_loses_the_silence_padded_around_each_clip(tmp_path,
     first, second = timings
     assert abs(first["words"][0]["start"] - narrator.EDGE_EDGE) < 0.01 and abs(first["end"] - keep) < 0.05
     assert abs(second["words"][0]["start"] - (keep + 0.2 + narrator.EDGE_EDGE)) < 0.05
+
+
+def test_chatterbox_voice_runs_its_own_python_and_falls_back_to_the_microsoft_voice(tmp_path, monkeypatch):
+    import wave
+
+    from ytstudio.adapters import narrator
+
+    fake = tmp_path / "fake_python.py"  # stands in for the Chatterbox venv: writes 0.5 s of silence per sentence
+    fake.write_text(
+        "#!/usr/bin/env python3\nimport json,sys,wave\na=sys.argv\nlines=json.load(open(a[a.index('--lines')+1]))\n"
+        "out=a[a.index('--out')+1]\nfor i,_ in enumerate(lines):\n"
+        "    w=wave.open(f'{out}/{i}.wav','wb');w.setnchannels(1);w.setsampwidth(2);w.setframerate(24000)\n"
+        "    w.writeframes(b'\\0\\0'*12000);w.close()\n"
+    )
+    fake.chmod(0o755)
+    cb = narrator.ChatterboxNarrator(str(fake))
+    monkeypatch.setattr(narrator, "CHATTERBOX_SCRIPT", fake)  # the "script" is the fake itself; run via its shebang
+    out = tmp_path / "v.wav"
+    t = cb.speak([("One.", 0.5), ("Two.", 0.0)], "en", out)
+    assert [(round(x["start"], 2), round(x["end"], 2)) for x in t] == [(0.0, 0.5), (1.0, 1.5)]
+    with wave.open(str(out)) as w:
+        assert w.getnframes() == 36000
+    assert t[0]["words"] == []
+
+    class Edge:
+        def speak(self, lines, voice, out):
+            return [{"start": 0, "end": 1, "words": []}] * len(lines)
+
+    texts = [("Hi.", 0.1)]
+    v = narrator.VoiceNarrator(Edge(), None, None)  # type: ignore[arg-type]
+    assert v.speak(texts, "chatterbox-en", tmp_path / "x.wav")[1] == "Microsoft neural voice"  # not installed

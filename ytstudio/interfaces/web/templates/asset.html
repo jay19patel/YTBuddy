@@ -61,7 +61,7 @@
       {% endif %}
       <form method="post" action="/scripts/{{ a.id }}/video" class="actions">
         <input type="hidden" name="csrf" value="{{ csrf }}">
-        <select name="voice" aria-label="Voice"><option value="">Voice: automatic</option>{% for v in voices %}<option value="{{ v.id }}">{{ v.label }}</option>{% endfor %}</select>
+        <select name="voice" aria-label="Voice"><option value="">Voice: automatic</option>{% for v in voices() %}<option value="{{ v.id }}">{{ v.label }}</option>{% endfor %}</select>
         <button class="btn" type="submit" data-busy="Starting…"><i data-lucide="clapperboard"></i>{{ "Make the video again" if d.video_key else "Generate video" }}</button>
       </form>
       {% if not d.video_key and flags.publish %}<p class="hint">After the video is made, the Upload to YouTube button appears here.</p>{% endif %}
@@ -87,30 +87,11 @@
         <div class="script-section {{ s.beat }}">
           <div class="beat">{{ s.beat | replace("_", " ") }} · {{ s.heading }}</div>
           <textarea name="section_{{ loop.index0 }}" rows="{{ [3, (s.spoken | length // 90) + 2] | max }}" class="spoken">{{ s.spoken }}</textarea>
-          {% if s.broll %}<p class="hint">B-roll: {{ s.broll | join("; ") }}</p>{% endif %}
           {% if s.on_screen_text %}<p class="hint">On screen: {{ s.on_screen_text | join("; ") }}</p>{% endif %}
         </div>
       {% endfor %}
       <button class="btn quiet">Save script</button>
     </form>
-    {% set shots = d.script.sections | selectattr("broll") | list %}
-    {% if shots %}
-    <h3>B-roll shot list</h3>
-    <p class="hint">What to film or find for each part. The links search free stock footage for that idea.</p>
-    <div class="shots">
-      {% for s in shots %}
-        <div class="shot-group"><strong>{{ s.heading }}</strong>
-          {% for b in s.broll %}
-            <div class="shot"><span>{{ b }}</span>
-              <a href="https://www.pexels.com/search/videos/{{ b | urlencode }}/" target="_blank" rel="noopener">Pexels</a>
-              <a href="https://pixabay.com/videos/search/{{ b | urlencode }}/" target="_blank" rel="noopener">Pixabay</a>
-            </div>
-          {% endfor %}
-        </div>
-      {% endfor %}
-    </div>
-    {% endif %}
-
   {% elif a.kind == "package" %}
     {% for pair in d.pairs %}<div class="card"><h3>{{ pair.title }}</h3><p>Thumbnail text: <strong>{{ pair.thumbnail_text }}</strong></p><p class="muted">Lint {{ pair.lint.score }}/100{% for i in pair.lint.issues %} · {{ i.kind }}: {{ i.message }}{% endfor %}</p></div>{% endfor %}
     <h3>Thumbnail brief</h3><pre class="copyable">{{ d.thumbnail_brief }}</pre>

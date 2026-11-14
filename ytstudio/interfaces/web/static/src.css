@@ -270,17 +270,12 @@
   .uploading .progress { display: block; }
   #status { @apply text-sm text-muted mt-2 min-h-6; }
 
-  /* Script video and B-roll */
+  /* Script video */
   .video-box { @apply my-3 p-4 rounded-xl border border-line bg-canvas; }
   .video-box video { @apply rounded-lg bg-black mb-3; }
   .video-box video.tall { @apply max-h-[520px]; }
   .video-box video.wide { @apply w-full max-w-[640px]; }
   .video-box .actions select { @apply w-auto; }
-  .shots { @apply flex flex-col gap-3 mt-2; }
-  .shot-group > strong { @apply text-sm; }
-  .shot { @apply flex flex-wrap items-center gap-x-3 gap-y-1 py-1 text-sm border-b border-line; }
-  .shot span { @apply flex-1 min-w-48; }
-  .shot a { @apply text-xs font-semibold text-muted underline underline-offset-2 hover:text-ink; }
 
   /* Idea and script types */
   .chips { @apply flex flex-wrap gap-1.5 mb-2; }

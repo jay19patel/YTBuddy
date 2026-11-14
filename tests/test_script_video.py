@@ -69,12 +69,12 @@ def test_making_the_video_again_replaces_the_old_files_and_deleting_the_script_r
     assert not container.storage.exists(second["video_key"]) and not container.storage.exists(second["audio_key"])
 
 
-def test_script_page_has_the_generate_button_the_player_and_a_broll_list(container, user_and_channel, db_url):
+def test_script_page_has_the_generate_button_the_player(container, user_and_channel, db_url):
     user_id, long_script, _ = scripts(container, user_and_channel)
     client, token = logged_in(db_url, user_id)
     before = client.get(f"/assets/{long_script.id}").text
     assert "Generate video" in before and "<video" not in before
-    assert "B-roll shot list" in before and "https://www.pexels.com/search/videos/receipts/" in before
+    assert "B-roll" not in before
     assert "Indian English, man" in before and 'name="look"' not in before  # one look: the kinetic style
     r = client.post(
         f"/scripts/{long_script.id}/video",

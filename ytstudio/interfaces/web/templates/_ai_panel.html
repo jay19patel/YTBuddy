@@ -5,7 +5,7 @@
   {% for prov in ai.providers %}
     <div class="job-row">
       <label class="field" for="k-{{ prov.id }}">{{ prov.name }}</label>
-      <input type="password" id="k-{{ prov.id }}" name="key_{{ prov.id }}" autocomplete="off"
+      <input type="password" id="k-{{ prov.id }}" name="key_{{ prov.id }}" autocomplete="new-password"
              placeholder="{{ 'saved, ends …' ~ prov.hint if prov.set else 'paste a key' }}">
       <p class="hint">{{ prov.status }}{% if prov.set %} ·
         <label class="switch"><input type="checkbox" name="remove_{{ prov.id }}" value="1"> remove the saved key</label>{% endif %}</p>

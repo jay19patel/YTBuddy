@@ -2,6 +2,7 @@
 every word is said). Piper is the offline fallback: open source, runs on the CPU, no account, no network."""
 
 import asyncio
+import json
 import logging
 import os
 import subprocess
@@ -12,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from ytstudio.domain.errors import DomainError, PermanentError, TransientError
-from ytstudio.domain.video import voice_language
+from ytstudio.domain.video import default_voice, voice_language
 
 log = logging.getLogger(__name__)
 
@@ -161,14 +162,70 @@ class EdgeNarrator:
         return timings
 
 
-class VoiceNarrator:
-    """The Microsoft voice first; if the service cannot be reached, the offline Piper voice of the same language."""
+CHATTERBOX_RATE = 24000
+CHATTERBOX_TIMEOUT_S = 3500  # inside the media queue's 3600 s soft limit
+CHATTERBOX_SCRIPT = Path(__file__).resolve().parents[2] / "tools" / "chatterbox_say.py"
 
-    def __init__(self, online: EdgeNarrator, offline: PiperNarrator):
-        self.online, self.offline = online, offline
+
+class ChatterboxNarrator:
+    """Chatterbox (open source, runs on this computer). It lives in its own virtualenv, so the app never imports torch:
+    tools/chatterbox_say.py does the speaking there. No word times come back; the video spreads each sentence's time."""
+
+    def __init__(self, python: str, ref_audio: str = ""):
+        self.python, self.ref = python, ref_audio
+
+    def speak(self, lines: list[tuple[str, float]], language: str, out: Path) -> list[dict[str, Any]]:
+        with tempfile.TemporaryDirectory() as d:
+            work = Path(d)
+            (work / "lines.json").write_text(json.dumps([t for t, _ in lines]), encoding="utf-8")
+            cmd = [
+                self.python,
+                str(CHATTERBOX_SCRIPT),
+                "--lines",
+                str(work / "lines.json"),
+                "--out",
+                d,
+                "--lang",
+                language,
+            ]
+            cmd += ["--ref", self.ref] if self.ref else []
+            try:
+                p = subprocess.run(cmd, capture_output=True, text=True, timeout=CHATTERBOX_TIMEOUT_S, check=False)
+            except (OSError, subprocess.TimeoutExpired) as e:
+                raise TransientError(f"Chatterbox could not run: {e}") from e
+            if p.returncode:
+                raise TransientError(f"Chatterbox failed: {p.stderr[-300:]}")
+            timings: list[dict[str, Any]] = []
+            t = 0.0
+            with wave.open(str(out), "wb") as dest:
+                dest.setnchannels(1)
+                dest.setsampwidth(2)
+                dest.setframerate(CHATTERBOX_RATE)
+                for i, (_, pause) in enumerate(lines):
+                    with wave.open(str(work / f"{i}.wav"), "rb") as r:
+                        if r.getframerate() != CHATTERBOX_RATE or r.getnchannels() != 1:
+                            raise PermanentError("Chatterbox sent audio that is not 24 kHz mono")
+                        frames, seconds = r.readframes(r.getnframes()), r.getnframes() / CHATTERBOX_RATE
+                    dest.writeframes(frames)
+                    dest.writeframes(b"\x00\x00" * int(pause * CHATTERBOX_RATE))
+                    timings.append({"start": t, "end": t + seconds, "words": []})
+                    t += seconds + pause
+        return timings
+
+
+class VoiceNarrator:
+    """The voice picked on the form: Chatterbox when asked for and installed, otherwise the Microsoft voice; if either
+    cannot be used, the offline Piper voice of the same language."""
+
+    def __init__(self, online: EdgeNarrator, offline: PiperNarrator, chatterbox: ChatterboxNarrator | None = None):
+        self.online, self.offline, self.chatterbox = online, offline, chatterbox
 
     def speak(self, lines: list[tuple[str, float]], voice: str, out: Path) -> tuple[list[dict[str, Any]], str]:
         try:
+            if voice.startswith("chatterbox"):
+                if self.chatterbox:
+                    return self.chatterbox.speak(lines, voice_language(voice), out), "Chatterbox (open source)"
+                voice = default_voice(voice_language(voice))  # not installed: the Microsoft voice of that language
             return self.online.speak(lines, voice, out), "Microsoft neural voice"
         except DomainError as e:
             log.warning("online voice failed, using the offline voice: %s", e)

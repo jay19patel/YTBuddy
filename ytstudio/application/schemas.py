@@ -56,7 +56,6 @@ class HooksOut(BaseModel):
 class ScriptSection(BaseModel):
     heading: str
     spoken: str = Field(description="The exact words to say")
-    broll: list[str] = Field(default_factory=list)
     on_screen_text: list[str] = Field(default_factory=list)
     beat: Literal["hook", "turn", "body", "pattern_interrupt", "retention_beat", "payoff", "outro"]
 

@@ -277,14 +277,14 @@ def llm_responses() -> dict[str, Any]:
             "sections": [
                 {"heading": "Hook", "spoken": "You are wasting rent.", "beat": "hook"},
                 {"heading": "Turn", "spoken": "Here's what we'll do.", "beat": "turn"},
-                {"heading": "Payoff", "spoken": "Do this.", "beat": "payoff", "broll": ["receipts"]},
+                {"heading": "Payoff", "spoken": "Do this.", "beat": "payoff"},
             ],
         },
         "short_script": {
             "hook": "Stop overpaying rent, do this instead.",
             "sections": [
                 {"heading": "Hook", "spoken": "Stop overpaying rent, do this instead.", "beat": "hook"},
-                {"heading": "Point", "spoken": "Ask for the receipts.", "beat": "body", "broll": ["receipts"]},
+                {"heading": "Point", "spoken": "Ask for the receipts.", "beat": "body"},
                 {"heading": "Payoff", "spoken": "That saved me twelve thousand.", "beat": "payoff"},
             ],
             "title": "Stop overpaying rent",

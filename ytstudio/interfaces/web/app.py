@@ -91,7 +91,10 @@ def asset_format(d: dict[str, Any]) -> str:
     return format_of(d if "format" in d or "effort" in d else d.get("idea") or {})
 
 
-templates.env.globals["voices"] = VOICES
+# the Chatterbox voices are offered only once CHATTERBOX_PYTHON points at an install
+templates.env.globals["voices"] = lambda: [
+    v for v in VOICES if not v.id.startswith("chatterbox") or get_container().s.chatterbox_python
+]
 templates.env.filters["asset_format"] = asset_format
 templates.env.filters["is_manual"] = lambda d: (
     d.get("source") == "manual" or (d.get("idea") or {}).get("source") == "manual"

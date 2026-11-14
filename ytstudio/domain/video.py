@@ -17,6 +17,8 @@ VOICES = (
     Voice("en-US-AvaMultilingualNeural", "American English, woman", "en"),
     Voice("hi-IN-MadhurNeural", "Hindi, man", "hi"),
     Voice("hi-IN-SwaraNeural", "Hindi, woman", "hi"),
+    Voice("chatterbox-en", "Chatterbox AI voice, English (slower)", "en"),
+    Voice("chatterbox-hi", "Chatterbox AI voice, Hindi (slower)", "hi"),
 )
 
 
@@ -26,4 +28,4 @@ def default_voice(channel_language: str) -> str:
 
 
 def voice_language(voice_id: str) -> str:
-    return "hi" if voice_id.startswith("hi-") else "en"
+    return "hi" if voice_id.startswith(("hi-", "chatterbox-hi")) else "en"
