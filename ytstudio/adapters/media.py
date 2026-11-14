@@ -185,34 +185,39 @@ class FFmpegMediaProcessor:
         _ffmpeg("-i", str(wav), "-af", chain, "-ar", "44100", "-c:a", "libmp3lame", "-q:a", "2", str(part), timeout=600)
         os.replace(part, out)
 
-    def render_subtitle_video(
-        self, units: list[dict[str, Any]], audio: Path, vertical: bool, look: str, out: Path
-    ) -> None:
-        """Animated typography on a plain screen, timed to the voice. See kinetic.py for how the words move."""
-        from ytstudio.adapters.kinetic import build_ass
-        from ytstudio.domain.video import look_of
+    def render_script_video(self, units: list[dict[str, Any]], audio: Path, vertical: bool, out: Path) -> None:
+        """Kinetic typography (pipeline/ + renderer/): scenes, colours and stickers planned from the words, every word
+        on screen when it is said, 9:16 for a Short, 16:9 otherwise."""
+        from pipeline import markup, plan, video
+        from pipeline.render import RenderError
+        from pipeline.settings import load
+        from pipeline.transcribe import TimedWord, align
+        from ytstudio.adapters.kinetic import timed_words
 
-        if not units:
-            raise PermanentError("There are no words to show as subtitles.")
-        style, total = look_of(look), self.duration(audio)
-        width, height = (1080, 1920) if vertical else (1920, 1080)
-        out.parent.mkdir(parents=True, exist_ok=True)
-        with tempfile.TemporaryDirectory() as d:
-            ass = Path(d) / "subs.ass"
-            ass.write_text(build_ass(units, total, vertical, style), encoding="utf-8")
-            fonts = Path("/usr/share/fonts/truetype/noto")
-            esc = lambda path: str(path).replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")  # noqa: E731
-            opts = f":fontsdir={esc(fonts)}" if fonts.exists() else ""
-            part = out.with_name(f".{out.name}.part.mp4")
-            _ffmpeg(
-                "-f", "lavfi", "-i", f"color=c=0x{style.bg}:s={width}x{height}:r=30:d={total:.3f}",
-                "-i", str(audio),
-                "-vf", f"ass=filename={esc(ass)}{opts},format=yuv420p",
-                "-c:v", "libx264", "-preset", "veryfast", "-crf", "22",
-                "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", "-shortest",
-                str(part),
-            )  # fmt: skip
-            os.replace(part, out)
+        tokens = [markup.Token(t) for u in units for w in str(u["text"]).split() if (t := _plain_word(w))]
+        heard = [TimedWord(word=w["text"], start=w["start"], end=w["end"]) for u in units for w in u.get("words") or []]
+        if heard:  # the voice reported its words: lay the script's spelling and punctuation onto them
+            words = align([t.text for t in tokens], heard)
+        else:  # the offline voice: each sentence's time shared out by word length
+            words = [
+                TimedWord(word=t, start=w.start, end=w.end) for w in timed_words(units) if (t := _plain_word(w.text))
+            ]
+            tokens = [markup.Token(w.word) for w in words]
+        if not words:
+            raise PermanentError("There are no words to show in the video.")
+        cfg = load()
+        try:
+            story = video.auto_story(cfg, tokens, words)
+            timeline = plan.plan(
+                story, words, video.video_info(cfg, "9x16" if vertical else "16x9"), self.duration(audio)
+            )
+            out.parent.mkdir(parents=True, exist_ok=True)
+            with tempfile.TemporaryDirectory() as d:
+                part = out.with_name(f".{out.name}.part.mp4")
+                video.render_video(cfg, timeline, audio, part, Path(d))
+                os.replace(part, out)
+        except (RenderError, FileNotFoundError, ValueError) as e:
+            raise PermanentError(f"The video could not be rendered: {e}") from e
 
     def frame(self, src: Path, at: float, out: Path) -> None:
         _ffmpeg(
@@ -274,6 +279,11 @@ class FasterWhisperTranscriber:
         lang = None if language in (None, "hinglish") else language
         segments, _ = self._model.transcribe(decode_16k_mono(media_path), language=lang, vad_filter=True)
         return [Cue(s.start, s.end, s.text.strip()) for s in segments]
+
+
+def _plain_word(w: str) -> str:
+    """A script word without characters the storyboard markup would read as emphasis markers."""
+    return w.replace("!!", "!").translate(str.maketrans("", "", "*[]~{}"))
 
 
 def has_ffmpeg() -> bool:

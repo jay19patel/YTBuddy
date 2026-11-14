@@ -24,7 +24,9 @@ export const mutedOn = (hex: string): string => (luminance(hex) > 0.55 ? THEME.p
 export const useUnits = () => {
 	const {width, height, fps} = useVideoConfig();
 	const u = Math.min(width, height);
-	return {width, height, fps, u, vertical: height > width, d: (frames: number) => Math.max(1, Math.round((frames * fps) / 30))};
+	const vertical = height > width;
+	const tu = u * (vertical ? THEME.type.verticalBoost : 1); // the unit for text sizes
+	return {width, height, fps, u, tu, vertical, d: (frames: number) => Math.max(1, Math.round((frames * fps) / 30))};
 };
 
 export const SANS = `'${THEME.fonts.sans}', sans-serif`;

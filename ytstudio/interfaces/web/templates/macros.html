@@ -1,6 +1,6 @@
 {% macro chips(fmt, manual) -%}
 <span class="chip {{ fmt }}"><i data-lucide="{{ 'smartphone' if fmt == 'short' else 'clapperboard' }}"></i>{{ "Short" if fmt == "short" else "Long video" }}</span>
-<span class="chip {{ 'manual' if manual else 'auto' }}"><i data-lucide="{{ 'pencil' if manual else 'sparkles' }}"></i>{{ "Manual" if manual else "Auto" }}</span>
+<span class="chip {{ 'manual' if manual else 'auto' }}"><i data-lucide="{{ 'pencil' if manual else 'sparkles' }}"></i>{{ "My idea" if manual else "Auto" }}</span>
 {%- endmacro %}
 
 {% macro format_toggle(base, fmt, counts, status) -%}

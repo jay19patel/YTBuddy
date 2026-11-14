@@ -44,6 +44,7 @@ THEME: dict[str, object] = {
         "bgWordOpacity": 0.15,
         "watermark": 0.026,
         "pill": 0.026,
+        "verticalBoost": 1.3,  # 9:16 has twice the height: text can be bigger (fit still caps it)
     },
     "layout": {"safe": 0.05, "gap": 0.018, "stickerSize": 0.15},
     # durations in frames at 30 fps (the renderer rescales for other rates)

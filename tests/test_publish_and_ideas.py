@@ -56,14 +56,54 @@ def test_a_short_idea_becomes_a_short_script_with_title_and_description(containe
     assert again.title == "Rent trick"  # the idea's name, not the model's new Short title
 
 
-def test_ideas_page_form_adds_an_idea_for_this_channel_only(container, user_and_channel, db_url):
-    client, token = logged_in(db_url, user_and_channel[0])
-    r = client.post("/ideas/new", data={"csrf": token, "title": "My topic", "mode": "save"}, follow_redirects=False)
-    assert r.status_code == 303 and r.headers["location"].startswith("/ideas")
-    assert "My topic" in client.get("/ideas").text
-    r = client.post("/ideas/new", data={"csrf": token, "title": "Do it now", "mode": "script"}, follow_redirects=False)
-    assert r.status_code == 303 and r.headers["location"].startswith("/assets/")
-    assert "Do it now" in client.get("/scripts").text  # the script shows up on the Scripts page
+def test_ideas_are_on_the_scripts_page_there_is_no_separate_ideas_page(container, user_and_channel, db_url):
+    user_id, channel = user_and_channel
+    client, token = logged_in(db_url, user_id)
+    r = client.get("/ideas?format=short", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/scripts?format=short"  # old links still land
+    assert 'href="/ideas"' not in client.get("/scripts").text  # no Ideas item in the sidebar
+    idea = container.review.add_idea(user_id, channel, "Saved for later", format="long")
+    page = client.get("/scripts").text
+    assert "Saved for later" in page and "No script yet" in page and "My idea</span>" in page
+    assert f'action="/ideas/{idea.id}/develop"' in page and "Write the script" in page
+    r = client.post(f"/ideas/{idea.id}/develop", data={"csrf": token}, follow_redirects=False)
+    opened = client.get(r.headers["location"], follow_redirects=False)  # follows the run, then opens the script
+    assert opened.headers["location"].startswith("/assets/")
+    page = client.get("/scripts").text
+    assert "No script yet" not in page and "Saved for later" in page  # now listed once, as its script
+
+
+def test_create_your_own_script_on_the_scripts_page_opens_the_script_when_it_is_written(
+    container, user_and_channel, db_url
+):
+    user_id, _ = user_and_channel
+    client, token = logged_in(db_url, user_id)
+    listing = client.get("/scripts?format=short").text
+    assert 'href="/scripts/new?format=short"' in listing and "Create your own script" in listing
+    form = client.get("/scripts/new?format=short").text
+    assert 'action="/scripts/new"' in form and 'value="short" checked' in form and 'name="details"' in form
+    notes = "FFmpeg, Remotion aur mera pipeline, ek command mein video"
+    r = client.post(
+        "/scripts/new",
+        data={"csrf": token, "title": "Python se video automate karo", "details": notes, "format": "short"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303 and r.headers["location"].startswith("/scripts/new/")
+    done = client.get(r.headers["location"], follow_redirects=False)  # the run finished: straight to the script
+    assert done.status_code == 303 and done.headers["location"].startswith("/assets/")
+    script_page = client.get(done.headers["location"]).text
+    assert "Python se video automate karo" in script_page and "Generate video" in script_page
+    assert container.llm.calls[-1].variables["idea"]["angle"] == notes  # your notes are what the script follows
+    assert "Python se video automate karo" in client.get("/scripts?format=short").text
+    assert client.get("/scripts/new/999999").status_code == 404
+
+
+def test_create_your_own_script_shows_progress_while_the_script_is_being_written(container, user_and_channel, db_url):
+    user_id, channel = user_and_channel
+    idea = container.review.add_idea(user_id, channel, "Not written yet", format="long")
+    client, _ = logged_in(db_url, user_id)
+    page = client.get(f"/scripts/new/{idea.id}").text  # no script yet: the idea and the progress, no form
+    assert "Not written yet" in page and "opens here by itself" in page and 'action="/scripts/new"' not in page
 
 
 def test_scripts_page_lists_the_daily_script(container, user_and_channel, db_url):
@@ -122,20 +162,14 @@ def test_scripts_and_ideas_pages_split_long_videos_from_shorts(container, user_a
     user_id, channel = user_and_channel
     container.scheduling.run_now(user_id, channel)  # a daily run: 2 long + 5 Shorts, every idea written out
     client, token = logged_in(db_url, user_id)
-    for path in ("/scripts", "/ideas"):
-        long_page, short_page = client.get(f"{path}?format=long").text, client.get(f"{path}?format=short").text
-        assert long_page.count('<article class="card') == 2 and short_page.count('<article class="card') == 5, path
-        assert 'aria-current="page"><i data-lucide="clapperboard"></i>Long videos<span class="n">2</span>' in long_page
-        assert 'Shorts<span class="n">5</span>' in long_page and "Auto</span>" in long_page, path
-        assert client.get(path).text.count('<article class="card') == 2  # long videos first
-    assert "Open the script" in client.get("/ideas?format=short").text
+    long_page, short_page = client.get("/scripts?format=long").text, client.get("/scripts?format=short").text
+    assert long_page.count('<article class="card') == 2 and short_page.count('<article class="card') == 5
+    assert 'aria-current="page"><i data-lucide="clapperboard"></i>Long videos<span class="n">2</span>' in long_page
+    assert 'Shorts<span class="n">5</span>' in long_page and "Auto</span>" in long_page
+    assert client.get("/scripts").text.count('<article class="card') == 2  # long videos first
+    assert "No script yet" not in short_page  # every daily idea was written: each shows once, as its script
     today = client.get("/today").text
     assert "Long videos today" in today and "Shorts today" in today and today.count("Open the script") == 7
-    page = client.post(
-        "/ideas/new",
-        data={"csrf": token, "title": "My short", "format": "short", "mode": "save"},
-        follow_redirects=False,
-    )
-    assert page.headers["location"].startswith("/ideas?format=short")
-    mine = client.get("/ideas?format=short").text
-    assert "My short" in mine and "Manual</span>" in mine and "Write the Short script" in mine
+    container.review.add_idea(user_id, channel, "My short", format="short")
+    mine = client.get("/scripts?format=short").text
+    assert "My short" in mine and "My idea</span>" in mine and "Write the script" in mine

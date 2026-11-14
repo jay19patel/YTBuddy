@@ -1,4 +1,4 @@
-"""Script to video: a voice-over and a white screen with black subtitles. Nothing here is published."""
+"""Script to video: a voice-over and a kinetic typography video timed to it. Nothing here is published."""
 
 import re
 import tempfile
@@ -73,12 +73,8 @@ class RenderScriptVideo(Step):
         stamp = int(self.deps.clock.now().timestamp())
         with tempfile.TemporaryDirectory() as d:
             out = Path(d) / "video.mp4"
-            self.deps.media.render_subtitle_video(
-                n["units"],
-                self.deps.storage.get(n["audio_key"]),
-                format_of(a.data) == "short",
-                ctx.inputs.get("look", "clean"),
-                out,
+            self.deps.media.render_script_video(
+                n["units"], self.deps.storage.get(n["audio_key"]), format_of(a.data) == "short", out
             )
             key = self.deps.storage.put(out, f"videos/{a.channel_id}/{a.id}-{stamp}.mp4")
         with self.deps.uow() as uow:

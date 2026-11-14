@@ -23,7 +23,7 @@ from ytstudio.config import get_settings
 from ytstudio.container import get_container
 from ytstudio.domain.errors import DomainError, NotFound
 from ytstudio.domain.models import format_of
-from ytstudio.domain.video import LOOKS, VOICES
+from ytstudio.domain.video import VOICES
 from ytstudio.logging_setup import request_id_var, setup_logging
 
 HERE = Path(__file__).parent
@@ -34,7 +34,6 @@ MESSAGES = {
     "deleted": "Deleted.",
     "ai_saved": "AI settings saved. Use the Test buttons to check that they work.",
     "about_saved": "About updated on YouTube.",
-    "idea_added": "Idea added. Develop it into a script when you are ready.",
     "started": "Started. Progress shows below.",
     "regenerating": "Regenerating. Reload in a minute.",
     "approved": "Approved.",
@@ -93,7 +92,6 @@ def asset_format(d: dict[str, Any]) -> str:
 
 
 templates.env.globals["voices"] = VOICES
-templates.env.globals["looks"] = LOOKS
 templates.env.filters["asset_format"] = asset_format
 templates.env.filters["is_manual"] = lambda d: (
     d.get("source") == "manual" or (d.get("idea") or {}).get("source") == "manual"

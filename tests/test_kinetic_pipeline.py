@@ -222,7 +222,13 @@ def test_auto_storyboard_covers_every_word_and_builds_a_valid_timeline():
     words = evenly(text)
     tokens = [markup.Token(w.word) for w in words]
     s = plan.auto_story(tokens, words, 3, 8, character=True)
-    assert plan.script_of(s) == tokens
+    assert [t.text for t in plan.script_of(s)] == [t.text for t in tokens]  # every word, in order
+    assert any(t.style == "highlight" for t in plan.script_of(s))  # the key word of a hero line is boxed
+    for sc in s.scenes:
+        assert sc.layout == "center_bracket" or any("sticker" in e for e in sc.content)
+        assert sc.bg_word is None or len(sc.bg_word) <= 7  # short enough to read when huge
+    stickers = [e["sticker"] for sc in s.scenes for e in sc.content if "sticker" in e]
+    assert all(a != b for a, b in pairwise(stickers))  # never the same sticker twice in a row
     t = plan.plan(s, words, video_info(Settings(), "9x16"), words[-1].end + 1)
     assert (t.video.width, t.video.height) == (1080, 1920) and len(t.scenes) >= 2
     assert not plan.missing_assets(t, ROOT / "assets")

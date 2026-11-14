@@ -37,12 +37,12 @@ def test_only_spoken_words_are_read_in_sentences_with_longer_pauses_between_sect
 def test_a_short_gets_a_vertical_video_and_a_long_video_a_wide_one(container, user_and_channel):
     user_id, long_script, short_script = scripts(container, user_and_channel)
     res = container.review.make_video(user_id, short_script.id)
-    container.review.make_video(user_id, long_script.id, voice="hi-IN-SwaraNeural", look="dark")
-    container.review.make_video(user_id, container.other_short.id, voice="nonsense", look="nonsense")
+    container.review.make_video(user_id, long_script.id, voice="hi-IN-SwaraNeural")
+    container.review.make_video(user_id, container.other_short.id, voice="nonsense")
     with container.uow() as uow:
         assert uow.runs.get(res.run_id).status == RunStatus.DONE
         short, long_ = uow.assets.get(short_script.id, user_id), uow.assets.get(long_script.id, user_id)
-    assert container.media["media"].videos[-3:] == [(3, True, "clean"), (3, False, "dark"), (3, True, "clean")]
+    assert container.media["media"].videos[-3:] == [(3, True), (3, False), (3, True)]
     spoken = [voice for _, voice in container.media["narrator"].spoken]
     assert spoken == ["en-IN-PrabhatNeural", "hi-IN-SwaraNeural", "en-IN-PrabhatNeural"]  # unknown choices are ignored
     for a in (short, long_):
@@ -75,10 +75,10 @@ def test_script_page_has_the_generate_button_the_player_and_a_broll_list(contain
     before = client.get(f"/assets/{long_script.id}").text
     assert "Generate video" in before and "<video" not in before
     assert "B-roll shot list" in before and "https://www.pexels.com/search/videos/receipts/" in before
-    assert "Indian English, man" in before and "Dark: black screen" in before
+    assert "Indian English, man" in before and 'name="look"' not in before  # one look: the kinetic style
     r = client.post(
         f"/scripts/{long_script.id}/video",
-        data={"csrf": token, "voice": "en-IN-NeerjaNeural", "look": "vivid"},
+        data={"csrf": token, "voice": "en-IN-NeerjaNeural"},
         follow_redirects=False,
     )
     assert r.status_code == 303 and "m=started" in r.headers["location"]

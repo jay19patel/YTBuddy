@@ -236,11 +236,29 @@ def missing_assets(t: Timeline, assets: Path) -> list[str]:
 
 BACKGROUNDS = ["black", "orange", "blue", "beige", "crimson", "beige", "charcoal", "blue"]
 STICKER_HINTS = {
-    "second": "stopwatch", "minute": "stopwatch", "time": "stopwatch", "folder": "folder", "file": "folder",
-    "edit": "scissors", "video": "clapper", "camera": "camera", "idea": "brain", "samajh": "brain", "dekh": "eyes",
-    "secret": "lock", "magic": "wand", "style": "palette", "growth": "chart_up", "tool": "hammer", "setup": "gear",
-    "laptop": "laptop", "browser": "globe", "prompt": "key", "perfect": "hundred", "comment": "thinking",
+    "second": "stopwatch", "minute": "stopwatch", "time": "stopwatch", "jaldi": "stopwatch", "folder": "folder",
+    "file": "folder", "edit": "scissors", "video": "clapper", "camera": "camera", "idea": "brain", "samajh": "brain",
+    "dekh": "eyes", "dekho": "eyes", "secret": "lock", "magic": "wand", "style": "palette", "growth": "chart_up",
+    "grow": "chart_up", "paisa": "chart_up", "paise": "chart_up", "money": "chart_up", "profit": "chart_up",
+    "tool": "hammer", "setup": "gear", "laptop": "laptop", "browser": "globe", "prompt": "key", "tip": "key",
+    "perfect": "hundred", "comment": "thinking", "kyun": "question", "kaise": "question", "follow": "heart",
+    "like": "thumbs_up", "galti": "cross", "mistake": "cross", "waste": "cross", "python": "laptop", "code": "laptop",
 }  # fmt: skip
+FALLBACK_STICKERS = ["sparkles", "fire", "eyes", "hundred", "brain", "key"]
+FILLER = {"hai", "hain", "ka", "ki", "ke", "ko", "se", "me", "mein", "aur", "yeh", "woh", "toh", "bhi", "the", "and"}
+
+
+def _emphasise(chunk: list[markup.Token], box: bool) -> list[markup.Token]:
+    """Numbers bold; the longest real word gets a highlight box (once per scene) when the script marked nothing."""
+    out = [
+        markup.Token(t.text, "bold") if t.style == "normal" and any(c.isdigit() for c in t.text) else t for t in chunk
+    ]
+    if box and all(t.style == "normal" for t in chunk):
+        cands = [i for i, t in enumerate(chunk) if len(norm(t.text)) >= 4 and norm(t.text) not in FILLER]
+        if cands:
+            i = max(cands, key=lambda i: len(norm(chunk[i].text)))
+            out[i] = markup.Token(chunk[i].text, "highlight")
+    return out
 
 
 def marked(t: markup.Token) -> str:
@@ -254,29 +272,33 @@ def marked(t: markup.Token) -> str:
 def auto_story(
     tokens: list[markup.Token], words: list[TimedWord], min_s: float, max_s: float, character: bool
 ) -> Story:
-    """A storyboard from rules: a scene per 3-8 s, colours cycling, lead/hero/sub lines, a keyword in the background
-    and a sticker when a word suggests one."""
+    """A storyboard from rules: a scene per 3-8 s, colours cycling, lead/hero/sub lines with the key word boxed,
+    a short keyword in the background and a sticker per scene (one a word suggests, else a neutral one)."""
     scenes: list[StoryScene] = []
+    last_sticker = ""
     for n, idx in enumerate(segment.scenes(words, min_s, max_s)):
         toks = [tokens[i] for i in idx]
         span = words[idx[-1]].end - words[idx[0]].start
         short = span < 2.5 and len(toks) <= 6
         content: list[dict[str, Any]] = []
         if short:
-            content.append({"hero": " ".join(marked(t) for t in toks)})
+            content.append({"hero": " ".join(marked(t) for t in _emphasise(toks, False))})
         else:
             chunks = [toks[:2], toks[2:7], toks[7:]] if len(toks) > 6 else [toks]
             for role, ch in zip(("lead", "hero", "sub") if len(chunks) == 3 else ("hero",), chunks, strict=False):
                 if ch:
-                    content.append({role: " ".join(marked(t) for t in ch)})
-        hint = next(
-            ((j, STICKER_HINTS[k]) for j, t in enumerate(toks) for k in STICKER_HINTS if norm(t.text).startswith(k)),
-            None,
-        )
-        if hint and not short:
-            content.append({"sticker": hint[1], "at": f"#{hint[0]}", "x": 0.7, "y": 0.3})
-        keyword = max((norm(t.text) for t in toks), key=len)
+                    content.append({role: " ".join(marked(t) for t in _emphasise(ch, role == "hero"))})
+        hints = [(j, STICKER_HINTS[k]) for j, t in enumerate(toks) for k in STICKER_HINTS if norm(t.text).startswith(k)]
+        hint = next((h for h in hints if h[1] != last_sticker), None)  # never the same sticker twice in a row
         layout = "center_bracket" if short else "text_plus_character" if character and n % 3 == 2 else "left_text"
+        if not short:  # every scene gets one sticker, so the visual half of the frame is never empty
+            spare = [x for x in FALLBACK_STICKERS if x != last_sticker]
+            name = last_sticker = hint[1] if hint else spare[n % len(spare)]
+            at = f"#{hint[0]}" if hint else f"#{min(len(toks) - 1, 2)}"
+            x = 0.25 if layout == "text_plus_character" else 0.68
+            content.append({"sticker": name, "at": at, "x": x, "y": 0.35, "size": 1.3})
+        words_ok = [norm(t.text) for t in toks if 3 <= len(norm(t.text)) <= 7 and norm(t.text) not in FILLER]
+        keyword = max(words_ok, key=len) if words_ok else None  # short enough to read when huge
         bg = "black" if short else BACKGROUNDS[n % len(BACKGROUNDS)]
         if layout == "text_plus_character":
             content.append({"character": "right"})
@@ -284,7 +306,7 @@ def auto_story(
             StoryScene(
                 bg=bg,
                 layout=layout,
-                bg_word=keyword if layout == "left_text" and len(keyword) >= 4 else None,
+                bg_word=keyword if layout == "left_text" else None,
                 transition="crossfade" if bg == "black" and n else "cut",
                 watermark="top_right",
                 content=content,

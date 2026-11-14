@@ -214,10 +214,8 @@ class FakeMedia:
     def encode_audio(self, wav: Path, out: Path) -> None:
         out.write_bytes(b"mp3")
 
-    def render_subtitle_video(
-        self, units: list[dict[str, Any]], audio: Path, vertical: bool, look: str, out: Path
-    ) -> None:
-        self.videos.append((len(units), vertical, look))
+    def render_script_video(self, units: list[dict[str, Any]], audio: Path, vertical: bool, out: Path) -> None:
+        self.videos.append((len(units), vertical))
         out.write_bytes(b"mp4")
 
 

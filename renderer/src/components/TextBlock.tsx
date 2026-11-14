@@ -27,7 +27,7 @@ export const Words: React.FC<{words: Word[]; weight: number; color: string; bg: 
 
 /** A lead-in, hero or sub line of the stacked text block. `k` is the fit-to-safe-area scale. */
 export const TextBlock: React.FC<{props: TextLineProps; k: number}> = ({props, k}) => {
-	const {u} = useUnits();
+	const {tu: u} = useUnits();
 	const {ink, muted, textBg, palette, align} = useScene();
 	const role = THEME.type[props.role];
 	const secondary = props.role === 'lead' || props.role === 'sub';

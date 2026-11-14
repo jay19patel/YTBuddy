@@ -49,7 +49,7 @@ services:
 
   worker-media:
     <<: *app
-    build: {context: ., args: {EXTRAS: "--extra media"}}  # faster-whisper only in this image
+    build: {context: ., args: {EXTRAS: "--extra media", RENDERER: "1"}}  # faster-whisper and the video renderer only here
     image: ytstudio-media:local
     command: celery -A ytstudio.interfaces.worker worker -Q media -c 1 --prefetch-multiplier 1 -n media@%h
     depends_on: {api: {condition: service_healthy}}

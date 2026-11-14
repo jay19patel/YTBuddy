@@ -2,7 +2,8 @@
 {% import "macros.html" as m with context %}
 {% block title %}Scripts · {{ current.title }}{% endblock %}
 {% block content %}
-<header><h1>Scripts</h1><span class="sub">Every day: 2 long-video scripts and 5 Shorts scripts, plus any you ask for.</span></header>
+<header><h1>Scripts</h1><span class="sub">Daily ideas and scripts (Auto) and your own (My idea), in one list.</span>
+  <a class="btn" href="/scripts/new?format={{ fmt }}"><i data-lucide="plus"></i>Create your own script</a></header>
 <div class="toolbar between">
   {{ m.format_toggle("/scripts", fmt, counts, status) }}
   <form method="get" action="/scripts">
@@ -21,6 +22,18 @@
   {% if scripts %}
   <div class="cards">
   {% for s in scripts %}{% set d = s.data %}
+    {% if s.kind == "idea" %}
+    <article class="card idea-card">
+      <div class="section-head">
+        <h3><i class="lead-ico" data-lucide="lightbulb"></i><a href="/assets/{{ s.id }}">{{ s.title }}</a></h3>
+        {{ m.review_actions(s, "/scripts?format=" ~ fmt) }}
+      </div>
+      <div class="chips">{{ m.chips(fmt, d | is_manual) }}<span class="chip"><i data-lucide="hourglass"></i>No script yet</span></div>
+      {% if d.angle %}<p>{{ d.angle }}</p>{% endif %}
+      <p class="muted">{{ s.created_at.strftime("%-d %b %Y") }}{% if d.outlier_refs %} · {{ d.outlier_refs | length }} outlier reference(s){% endif %}</p>
+      <div class="actions">{{ m.post("/ideas/" ~ s.id ~ "/develop", "Write the script", "btn small") }}</div>
+    </article>
+    {% else %}
     <article class="card">
       <div class="section-head"><h3><a href="/assets/{{ s.id }}">{{ s.title }}</a></h3>{{ m.review_actions(s, "/scripts?format=" ~ fmt) }}</div>
       <div class="chips">{{ m.chips(fmt, d | is_manual) }}{% if d.video_key %}<span class="chip auto"><i data-lucide="video"></i>Video ready</span>{% endif %}</div>
@@ -37,8 +50,9 @@
         <pre class="copyable">{{ d.hook.hook }}</pre>
       {% endif %}
     </article>
+    {% endif %}
   {% endfor %}
   </div>
-  {% else %}<p class="muted">No {{ "Shorts" if fmt == "short" else "long-video" }} scripts {% if status %}with this status {% endif %}yet. The daily run writes them, or add your own idea on the Ideas page.</p>{% endif %}
+  {% else %}<p class="muted">No {{ "Shorts" if fmt == "short" else "long-video" }} scripts or ideas {% if status %}with this status {% endif %}yet. The daily run writes them, or <a href="/scripts/new?format={{ fmt }}">create your own</a>.</p>{% endif %}
 </section>
 {% endblock %}

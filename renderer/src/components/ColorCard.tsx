@@ -11,7 +11,7 @@ export const CARD_PAD = {x: 0.5, y: 0.28}; // em of the card text size
 export const ColorCard: React.FC<{props: CardProps; at: number; k: number}> = ({props, at, k}) => {
 	const frame = useCurrentFrame();
 	const {fps} = useVideoConfig();
-	const {u} = useUnits();
+	const {tu: u} = useUnits();
 	const {palette} = useScene();
 	const s = cardSpring(frame, at, fps);
 	const bg = colorOf(props.color, palette);

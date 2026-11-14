@@ -61,7 +61,7 @@ Aliases live in `config/llm.toml` as defaults: `fast` (classification, niche det
 
 ## Pages
 
-Today (the daily brief: analysis, trends, 5 ideas, a script) · Scripts (every script, daily and requested) · Ideas (backlog, plus a form for your own idea) · Insights (analytics, retention charts) · Trends · Publish (manual upload; fills title, description and tags from a script and can schedule it) · Jobs (runs, retries, dead letters, LLM cost, quota, health for the selected channel) · Settings (per channel: schedule, language, region, topics, voice; plus budget, sync, read-only LLM aliases).
+Today (the daily brief: analysis, trends, 5 ideas, a script) · Scripts (daily scripts and ideas marked Auto, your own marked My idea; "Create your own script" writes one from your idea and notes; Generate video on any script) · Insights (analytics, retention charts) · Trends · Publish (manual upload; fills title, description and tags from a script and can schedule it) · Jobs (runs, retries, dead letters, LLM cost, quota, health for the selected channel) · Settings (per channel: schedule, language, region, topics, voice; plus budget, sync, read-only LLM aliases).
 
 ## Kinetic typography videos (`python -m pipeline`)
 
@@ -70,13 +70,18 @@ scenes, mock app windows, Fluent 3D stickers, your presenter character, 16:9 or 
 (React) draws it, FFmpeg adds the voice, ducked music and SFX and normalises loudness to -14 LUFS.
 How it works: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#kinetic-video-pipeline).
 
+**From the website:** open any script → pick a voice → **Generate video**. The voice reads the script, the scenes are
+planned automatically and the video appears on the same page in a minute or two (9:16 for a Short script, 16:9 for a
+long one), with Download and Upload buttons. With Docker, rebuild once so the media worker gets the renderer:
+`docker compose up -d --build`. Without Docker, run `uv sync --extra media` and `cd renderer && npm ci`.
+
 ### Setup
 
 | Tool | Version | macOS | Linux (Debian/Ubuntu) | Windows |
 | --- | --- | --- | --- | --- |
 | Python | 3.12 | `brew install uv` | `curl -LsSf https://astral.sh/uv/install.sh \| sh` | `winget install astral-sh.uv` |
 | Node.js | 20 or 22 LTS (tested on 26) | `brew install node` | [nodesource](https://github.com/nodesource/distributions) or `nvm install 22` | `winget install OpenJS.NodeJS.LTS` |
-| FFmpeg | 6+ (libx264; libass only for `--simple`) | `brew install ffmpeg` | `sudo apt install ffmpeg` | `winget install Gyan.FFmpeg` |
+| FFmpeg | 6+ (libx264) | `brew install ffmpeg` | `sudo apt install ffmpeg` | `winget install Gyan.FFmpeg` |
 
 ```bash
 uv sync                          # Python deps (add --extra media for faster-whisper transcription)
@@ -95,7 +100,8 @@ your own music file. On Windows run the commands below in PowerShell with `uv ru
 python -m pipeline make --audio vo.wav --storyboard story.yaml --format 16x9 --out exports/
 # voice-over + script only: scenes, colours and stickers are planned automatically (--llm lets Claude pick them)
 python -m pipeline make --audio vo.wav --script script.txt --format 9x16 --music bed.mp3 --sfx
-#   --words words.json   skip transcription   --until 20   render only the first 20 s   --simple   old ASS renderer
+#   --words words.json   skip transcription   --until 20   render only the first 20 s
+python -m pipeline voice --storyboard story.yaml --out vo.wav   # Microsoft voice + vo.words.json, no transcription
 
 python -m pipeline demo --format 16x9         # the 90 s reference video with fake timings and a click track
 python -m pipeline stills --composition Demo  # docs/previews/*.png at 1, 4, 7, 12, 18 s

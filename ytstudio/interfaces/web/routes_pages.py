@@ -59,31 +59,10 @@ def by_format(rows: list[dict[str, Any]], fmt: str) -> tuple[list[dict[str, Any]
 
 
 @router.get("/ideas")
-def ideas(request: Request, p: Page = Depends(page)) -> Response:
-    if not p.active:
-        return render(p, "empty.html")
-    status = request.query_params.get("status") or None
+def ideas(request: Request) -> Response:
+    """Ideas live on the Scripts page now (an idea without a script yet shows there with a Write button)."""
     fmt = "short" if request.query_params.get("format") == "short" else "long"
-    rows, counts = by_format(queries().assets(p.user.id, p.channel_id, ["idea"], status=status), fmt)
-    scripted = {r["parent_id"]: r["id"] for r in reversed(queries().assets(p.user.id, p.channel_id, ["script"]))}
-    return render(p, "ideas.html", ideas=rows, status=status, fmt=fmt, counts=counts, scripted=scripted)
-
-
-@router.post("/ideas/new")
-def new_idea(
-    title: str = Form(""),
-    details: str = Form(""),
-    effort: str = Form("standard"),
-    format: str = Form(""),
-    mode: str = Form("save"),
-    p: Page = Depends(csrf),
-) -> Response:
-    c = get_container()
-    idea = c.review.add_idea(p.user.id, p.channel_id, title, details, effort, format)
-    assert idea.id is not None
-    if mode == "script":  # write the script right away
-        return started(f"/assets/{idea.id}", c.review.develop(p.user.id, idea.id))
-    return back(f"/ideas?format={asset_format(idea.data)}", "idea_added")
+    return RedirectResponse(f"/scripts?format={fmt}", status_code=303)
 
 
 @router.get("/scripts")
@@ -92,18 +71,58 @@ def scripts(request: Request, p: Page = Depends(page)) -> Response:
         return render(p, "empty.html")
     status = request.query_params.get("status") or None
     fmt = "short" if request.query_params.get("format") == "short" else "long"
-    rows, counts = by_format(queries().assets(p.user.id, p.channel_id, ["script"], status=status), fmt)
+    q = queries()
+    scripts_ = q.assets(p.user.id, p.channel_id, ["script"], status=status)
+    scripted = {r["parent_id"] for r in q.assets(p.user.id, p.channel_id, ["script"])}
+    waiting = [i for i in q.assets(p.user.id, p.channel_id, ["idea"], status=status) if i["id"] not in scripted]
+    both = sorted(scripts_ + waiting, key=lambda r: r["created_at"], reverse=True)  # scripts and ideas, newest first
+    rows, counts = by_format(both, fmt)
     return render(p, "scripts.html", scripts=rows, status=status, fmt=fmt, counts=counts)
 
 
+@router.get("/scripts/new")
+def new_script_form(request: Request, p: Page = Depends(page)) -> Response:
+    if not p.active:
+        return render(p, "empty.html")
+    fmt = "short" if request.query_params.get("format") == "short" else "long"
+    return render(p, "script_new.html", fmt=fmt, idea=None, run=None)
+
+
+@router.post("/scripts/new")
+def new_script(
+    title: str = Form(""), details: str = Form(""), format: str = Form("long"), p: Page = Depends(csrf)
+) -> Response:
+    """Your own idea straight to a script: saved as a manual idea (so the script has its package and SEO like any
+    other), developed at once, and the page follows the run until the script opens."""
+    c = get_container()
+    idea = c.review.add_idea(p.user.id, p.channel_id, title, details, format=format)
+    assert idea.id is not None
+    return started(f"/scripts/new/{idea.id}", c.review.develop(p.user.id, idea.id))
+
+
+@router.get("/scripts/new/{idea_id}")
+def new_script_progress(idea_id: int, request: Request, p: Page = Depends(page)) -> Response:
+    q = queries()
+    idea = q.asset(p.user.id, idea_id)
+    if not idea or idea["kind"] != "idea":
+        raise HTTPException(404)
+    if script := q.developed(p.user.id, idea["channel_id"], idea_id).get("script"):
+        msg = request.query_params.get("m")  # "already done" still says so on the script; "started" is over by now
+        return back(f"/assets/{script['id']}", msg if msg and msg != "started" else None)
+    run_id = request.query_params.get("run")
+    run = (q.run(p.user.id, int(run_id)) if run_id and run_id.isdigit() else None) or q.run_for_asset(p.user.id, idea)
+    return render(p, "script_new.html", fmt=asset_format(idea["data"]), idea=idea, run=run)
+
+
 @router.post("/scripts/{script_id}/video")
-def make_video(script_id: int, voice: str = Form(""), look: str = Form(""), p: Page = Depends(csrf)) -> Response:
-    return started(f"/assets/{script_id}", get_container().review.make_video(p.user.id, script_id, voice, look))
+def make_video(script_id: int, voice: str = Form(""), p: Page = Depends(csrf)) -> Response:
+    return started(f"/assets/{script_id}", get_container().review.make_video(p.user.id, script_id, voice))
 
 
 @router.post("/ideas/{idea_id}/develop")
 def develop(idea_id: int, p: Page = Depends(csrf)) -> Response:
-    return started(f"/assets/{idea_id}", get_container().review.develop(p.user.id, idea_id))
+    """Write the script for an idea; the page follows the run and opens the script when it is ready."""
+    return started(f"/scripts/new/{idea_id}", get_container().review.develop(p.user.id, idea_id))
 
 
 def upload_context(p: Page, a: dict[str, Any]) -> dict[str, Any]:
@@ -176,7 +195,7 @@ def delete_asset(asset_id: int, next: str = Form("/today"), p: Page = Depends(cs
     gone = get_container().review.delete(p.user.id, asset_id)
     dest = next if next.startswith("/") and not next.startswith("//") else "/today"
     if dest.startswith(f"/assets/{asset_id}"):  # that page no longer exists: go to the list it belonged to
-        dest = {"idea": "/ideas", "script": "/scripts"}.get(gone.kind, "/today")
+        dest = "/scripts" if gone.kind in ("idea", "script") else "/today"
     return back(dest, "deleted")
 
 

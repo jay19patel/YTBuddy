@@ -82,6 +82,7 @@ class PiperNarrator:
 
 EDGE_RATE = 24000  # what the service sends: 24 kHz mono MP3
 EDGE_TRIES = 3
+EDGE_EDGE = 0.12  # silence kept before the first and after the last word of each clip
 
 
 def decode_to_wav(mp3: bytes, workdir: Path, name: str) -> Path:
@@ -141,6 +142,12 @@ class EdgeNarrator:
             for i, ((_, pause), (mp3, words)) in enumerate(zip(lines, spoken, strict=True)):
                 with wave.open(str(decode_to_wav(mp3, Path(d), str(i))), "rb") as r:
                     frames, seconds = r.readframes(r.getnframes()), r.getnframes() / EDGE_RATE
+                if words:  # the service pads every clip with ~0.5 s of silence each side: keep a short breath only
+                    a = max(0.0, words[0][0] - EDGE_EDGE)
+                    b = min(seconds, words[-1][0] + words[-1][1] + EDGE_EDGE)
+                    frames = frames[int(a * EDGE_RATE) * 2 : int(b * EDGE_RATE) * 2]
+                    seconds = len(frames) / 2 / EDGE_RATE
+                    words = [(off - a, dur, w) for off, dur, w in words]
                 dest.writeframes(frames)
                 dest.writeframes(b"\x00\x00" * int(pause * EDGE_RATE))
                 timings.append(

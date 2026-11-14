@@ -1,15 +1,6 @@
-"""The choices on the "Generate video" form: who reads the script and how the subtitles look."""
+"""The choice on the "Generate video" form: who reads the script."""
 
 from dataclasses import dataclass
-
-
-@dataclass(frozen=True)
-class Look:
-    id: str
-    label: str
-    bg: str  # hex colours, no #
-    ink: str
-    accent: str
 
 
 @dataclass(frozen=True)
@@ -19,11 +10,6 @@ class Voice:
     language: str  # "en" or "hi"
 
 
-LOOKS = (
-    Look("clean", "Clean: white screen, black text", "FFFFFF", "141414", "E5322D"),
-    Look("dark", "Dark: black screen, white text", "0E0E10", "FFFFFF", "FFD60A"),
-    Look("vivid", "Vivid: red screen, white text", "E5322D", "FFFFFF", "FFE45E"),
-)
 VOICES = (
     Voice("en-IN-PrabhatNeural", "Indian English, man", "en"),
     Voice("en-IN-NeerjaNeural", "Indian English, woman", "en"),
@@ -41,7 +27,3 @@ def default_voice(channel_language: str) -> str:
 
 def voice_language(voice_id: str) -> str:
     return "hi" if voice_id.startswith("hi-") else "en"
-
-
-def look_of(look_id: str) -> Look:
-    return next((x for x in LOOKS if x.id == look_id), LOOKS[0])

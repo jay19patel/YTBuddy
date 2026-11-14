@@ -62,7 +62,6 @@
       <form method="post" action="/scripts/{{ a.id }}/video" class="actions">
         <input type="hidden" name="csrf" value="{{ csrf }}">
         <select name="voice" aria-label="Voice"><option value="">Voice: automatic</option>{% for v in voices %}<option value="{{ v.id }}">{{ v.label }}</option>{% endfor %}</select>
-        <select name="look" aria-label="Look">{% for x in looks %}<option value="{{ x.id }}">{{ x.label }}</option>{% endfor %}</select>
         <button class="btn" type="submit" data-busy="Starting…"><i data-lucide="clapperboard"></i>{{ "Make the video again" if d.video_key else "Generate video" }}</button>
       </form>
       {% if not d.video_key and flags.publish %}<p class="hint">After the video is made, the Upload to YouTube button appears here.</p>{% endif %}
@@ -70,7 +69,7 @@
         {% if d.youtube_id %}{{ m.uploaded_box(d) }}
         {% elif flags.publish and prefill %}{{ m.upload_form(a.id, prefill.title, prefill.description, prefill.tags, tz, (d | asset_format) == "short", "/assets/" ~ a.id) }}{% endif %}
       {% endif %}
-      <p class="hint">A natural neural voice reads the script and each word pops onto the screen as it is said ({{ "vertical, for a Short" if (d | asset_format) == "short" else "widescreen, for a long video" }}). {% if d.video_engine %}Last voice: {{ d.video_engine }}. {% endif %}Nothing is uploaded.</p>
+      <p class="hint">A natural neural voice reads the script; the video is planned from it automatically: bold colour scenes, every word on screen the moment it is said, 3D stickers and your brand ({{ "vertical, for a Short" if (d | asset_format) == "short" else "widescreen, for a long video" }}). Takes a minute or two. {% if d.video_engine %}Last voice: {{ d.video_engine }}. {% endif %}Nothing is uploaded.</p>
     </div>
     {% if d.format == "short" %}
       <h3>Title <button class="copy" type="button" data-copy="{{ d.title }}">Copy</button></h3><p>{{ d.title }}</p>

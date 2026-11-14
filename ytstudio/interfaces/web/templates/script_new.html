@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% import "macros.html" as m with context %}
+{% block title %}Create your own script · {{ current.title }}{% endblock %}
+{% block content %}
+<header><h1>Create your own script</h1><span class="sub">Your idea, your points: the assistant writes the script in your channel's voice.</span></header>
+{% if idea %}
+  <section class="panel">
+    <h2>{{ idea.title }}</h2>
+    {% if idea.data.angle %}<pre class="copyable">{{ idea.data.angle }}</pre>{% endif %}
+    <p class="hint">Writing the {{ "Short" if fmt == "short" else "long-video" }} script{% if fmt == "long" %}, its titles and its description{% endif %}. The script opens here by itself when it is ready.</p>
+  </section>
+  {{ m.run_progress(run) }}
+{% else %}
+<section class="panel">
+  <form method="post" action="/scripts/new">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <div class="modes" role="radiogroup" aria-label="Video type">
+      <input type="radio" id="f-long" name="format" value="long" {% if fmt == "long" %}checked{% endif %}><label for="f-long">Long video</label>
+      <input type="radio" id="f-short" name="format" value="short" {% if fmt == "short" %}checked{% endif %}><label for="f-short">Short</label>
+    </div>
+    <div class="row"><label class="field" for="i-title">Your idea or topic</label>
+      <input type="text" id="i-title" name="title" maxlength="200" required autofocus placeholder="For example: Python se video editing automate kaise kare"></div>
+    <div class="row"><label class="field" for="i-details">What you want in it (optional)</label>
+      <textarea id="i-details" name="details" rows="8" maxlength="2000" placeholder="Your points, your own work or results, steps to explain, examples, who it is for, the ending you want. Write in Hinglish or English, as notes; the script follows them."></textarea></div>
+    <div class="actions">
+      <button class="btn" type="submit" data-busy="Starting…"><i data-lucide="pen-line"></i>Write my script</button>
+      <a class="copy" href="/scripts?format={{ fmt }}">Cancel</a>
+    </div>
+  </form>
+  <p class="hint">It takes a few seconds for a Short and about a minute for a long video. Then you can edit it, approve it and press Generate video on the script.</p>
+</section>
+{% endif %}
+{% endblock %}

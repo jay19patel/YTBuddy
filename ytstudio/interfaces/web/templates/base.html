@@ -59,7 +59,7 @@
     {% if current and not account_page %}
     {% set groups = [
       ("Overview", [("/insights", "Insights", "layout-dashboard"), ("/today", "Today", "sun")]),
-      ("Create", [("/scripts", "Scripts", "file-text"), ("/ideas", "Ideas", "lightbulb"), ("/shorts", "Shorts", "smartphone"), ("/trends", "Trends", "trending-up")] + ([("/publish", "Publish", "upload")] if flags.publish else [])),
+      ("Create", [("/scripts", "Scripts", "file-text"), ("/shorts", "Shorts", "smartphone"), ("/trends", "Trends", "trending-up")] + ([("/publish", "Publish", "upload")] if flags.publish else [])),
       ("Manage", [("/jobs", "Jobs", "activity"), ("/settings", "Settings", "settings")]),
     ] %}
     <nav class="tabs" aria-label="Channel sections">

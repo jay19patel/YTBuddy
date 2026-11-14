@@ -8,7 +8,7 @@ import type {TagPillProps} from '../types.gen';
 export const TagPill: React.FC<{props: TagPillProps; at: number; k: number}> = ({props, at, k}) => {
 	const frame = useCurrentFrame();
 	const {fps} = useVideoConfig();
-	const {u} = useUnits();
+	const {tu: u} = useUnits();
 	const {palette} = useScene();
 	const s = cardSpring(frame, at, fps);
 	return (

@@ -9,7 +9,7 @@ export const LIST_ROW_EM = 1.7;
 /** LIST_REVEAL: icon + label rows, one by one (stagger 250 ms unless an item says when). */
 export const ListReveal: React.FC<{props: ListRevealProps; at: number; k: number}> = ({props, at, k}) => {
 	const frame = useCurrentFrame();
-	const {d, u} = useUnits();
+	const {d, tu: u} = useUnits();
 	const {rel} = useRel();
 	const {ink, palette} = useScene();
 	return (

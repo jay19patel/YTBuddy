@@ -113,7 +113,7 @@ type Block = {els: Element[]; start: number; end: number};
 
 const Elements: React.FC<{elements: Element[]}> = ({elements}) => {
 	const frame = useCurrentFrame();
-	const {u, d} = useUnits();
+	const {tu: u, d} = useUnits();
 	const {rel, relEnd} = useRel();
 	const scene = useScene();
 	const flow = elements.filter((e) => FLOW.has(e.type) && !isCaption(e));
@@ -216,7 +216,7 @@ const measurables = (els: Element[], u: number): Measurable[] =>
 
 const FlowItem: React.FC<{group: Element[]; k: number}> = ({group, k}) => {
 	const frame = useCurrentFrame();
-	const {d, u} = useUnits();
+	const {d, tu: u} = useUnits();
 	const {rel, relEnd} = useRel();
 	const {align} = useScene();
 	const e = group[0];
@@ -289,7 +289,7 @@ const Visual: React.FC<{el: Element; at: number}> = ({el, at}) => {
 
 /** A caption line in a dark bar across the bottom ("aur sab ke sab"). */
 const CaptionBar: React.FC<{el: TextLine}> = ({el}) => {
-	const {u, height} = useUnits();
+	const {tu: u, height} = useUnits();
 	const {palette} = useScene();
 	const fs = THEME.type.caption.size * u;
 	return (

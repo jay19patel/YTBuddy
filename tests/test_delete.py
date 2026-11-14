@@ -30,14 +30,16 @@ def test_deleting_an_idea_removes_its_script_package_and_seo_only(container, use
     made, user_id = daily(container, user_and_channel)
     idea_one, idea_two = made[("idea", 1)], made[("idea", 2)]  # the daily script/package/seo hang under idea 1
     client, token = logged_in(db_url, user_id)
-    r = client.post(f"/assets/{idea_one.id}/delete", data={"csrf": token, "next": "/ideas"}, follow_redirects=False)
-    assert r.status_code == 303 and r.headers["location"].startswith("/ideas")
+    r = client.post(f"/assets/{idea_one.id}/delete", data={"csrf": token, "next": "/scripts"}, follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"].startswith("/scripts")
     assert not exists(container, user_id, idea_one.id)
     for kind in ("script", "package", "seo"):
         assert not exists(container, user_id, made[(kind, idea_one.id)].id), kind
     assert exists(container, user_id, idea_two.id) and exists(container, user_id, made[("brief", None)].id)
-    page = client.get("/ideas").text
-    assert f'href="/assets/{idea_one.id}"' not in page and f'href="/assets/{idea_two.id}"' in page
+    page = client.get("/scripts").text + client.get("/scripts?format=short").text
+    assert (
+        f'href="/assets/{made[("script", idea_one.id)].id}"' not in page and f'href="/assets/{idea_one.id}"' not in page
+    )
     assert client.get("/today").status_code == 200  # the brief page copes with its script being gone
 
 
@@ -57,19 +59,20 @@ def test_deleting_from_the_asset_page_lands_on_the_list_not_a_404(container, use
     r = client.post(
         f"/assets/{idea.id}/delete", data={"csrf": token, "next": f"/assets/{idea.id}"}, follow_redirects=False
     )
-    assert r.headers["location"].startswith("/ideas")
+    assert r.headers["location"].startswith("/scripts")
 
 
 def test_the_button_warns_about_what_goes_with_the_idea(container, user_and_channel, db_url):
-    made, user_id = daily(container, user_and_channel)
+    user_id, channel = user_and_channel
+    idea = container.review.add_idea(user_id, channel, "Waiting for a script", format="long")
     client, _ = logged_in(db_url, user_id)
-    page = client.get("/ideas").text
+    page = client.get("/scripts").text  # an idea without a script yet is on the Scripts page
     assert (
         "Delete this idea and the script, package and SEO written for it for good?" in page
         and ">Delete</button>" in page
     )
-    container.review.set_status(user_id, made[("idea", 2)].id, "approved")  # type: ignore[arg-type]
-    assert "It is approved. Delete this idea" in client.get("/ideas").text
+    container.review.set_status(user_id, idea.id, "approved")  # type: ignore[arg-type]
+    assert "It is approved. Delete this idea" in client.get("/scripts").text
 
 
 def test_only_the_owner_can_delete_and_a_brief_cannot_be_deleted(container, user_and_channel, db_url):

@@ -84,7 +84,8 @@ export const THEME = {
     "bgWord": 0.55,
     "bgWordOpacity": 0.15,
     "watermark": 0.026,
-    "pill": 0.026
+    "pill": 0.026,
+    "verticalBoost": 1.3
   },
   "layout": {
     "safe": 0.05,

@@ -5,15 +5,15 @@ import {SANS, THEME, useUnits} from '../theme';
 /** The scene's keyword, huge, outline only, low opacity, drifting slowly behind everything, cropped by the edge. */
 export const OutlineBgWord: React.FC<{text: string; color: string; side: 'left' | 'right'}> = ({text, color, side}) => {
 	const frame = useCurrentFrame();
-	const {u, width, height, d} = useUnits();
-	const fs = THEME.type.bgWord * u;
+	const {u, width, d} = useUnits();
+	const fs = Math.min(THEME.type.bgWord * u, (width * 1.15) / (text.length * 0.62)); // mostly in frame
 	const p = ease(frame, 0, d(12));
 	return (
 		<div
 			style={{
 				position: 'absolute',
 				[side]: -width * 0.02,
-				bottom: -height * 0.06,
+				bottom: -fs * 0.12, // just touching the bottom edge
 				fontFamily: SANS,
 				fontWeight: 900,
 				fontSize: fs,

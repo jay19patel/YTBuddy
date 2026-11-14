@@ -100,9 +100,12 @@ Then add `"summarise_comments"` to a pipeline in `config/pipelines.toml`, add `p
 
 # Kinetic video pipeline
 
-`python -m pipeline make` turns a voice-over into a kinetic typography explainer. It sits beside the web app and reuses
-its FFmpeg runner, audio decoder and logging; the web app's "Generate video" step still uses the ASS renderer
-(`ytstudio/adapters/kinetic.py`), which is also the CLI's `--simple` fallback.
+`python -m pipeline make` turns a voice-over into a kinetic typography explainer. The web app's "Generate video" uses
+the same code: `narrate_script` reads the script with the Microsoft voice (word timings included, silence padding
+trimmed), then `render_script_video` calls `FFmpegMediaProcessor.render_script_video`, which aligns the script's words
+onto the voice's word times, plans the scenes with `pipeline.video.auto_story` and renders with
+`pipeline.video.render_video`. The `worker-media` image is built with `RENDERER=1` (Node, Chrome libraries,
+`npm ci`, `remotion browser ensure`); the other images stay without Node.
 
 ```
 vo.wav ─► transcribe ─► words.json ─► plan ─► timeline.json ─► Remotion render ─► silent.mp4 ─► mux ─► final.mp4

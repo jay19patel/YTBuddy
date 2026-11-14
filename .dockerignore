@@ -12,3 +12,6 @@ __pycache__
 .ruff_cache
 docs/
 tests/
+renderer/node_modules
+renderer/out
+exports/

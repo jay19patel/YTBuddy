@@ -63,9 +63,9 @@ New architecture: Python orchestrator (`pipeline/`) → `timeline.json` → Remo
 
 | Finding | Status |
 | --- | --- |
-| libass required, no preflight | Fixed for the new path (text drawn by Remotion). `--simple` still needs libass. |
+| libass required, no preflight | Fixed: the ASS renderer is gone; the web app's "Generate video" uses the new renderer. |
 | No word timestamps / Devanagari output | Fixed in `pipeline/transcribe.py` (word timestamps, Hinglish → `en`, script alignment). The web app's Shorts transcription is unchanged. |
-| Length-shared timing, TTS/script count mismatch | Fixed in the new path by `align()`; `kinetic.timed_words` unchanged for `--simple`. |
+| Length-shared timing, TTS/script count mismatch | Fixed by `align()`; `kinetic.timed_words` is only the fallback for the offline voice. |
 | Font mismatch / fixed font paths / overflow | Fixed: bundled OFL fonts, measured in the renderer, fit-to-safe-area tested with a 45-letter word in 9:16. |
 | `_ffmpeg` timeout / missing binary | Fixed in `ytstudio/adapters/media.py` (clear `PermanentError`). |
 | No loudness target on the final mix | Fixed: -14 LUFS (measured -14.1 LUFS on speech + ducked music). |

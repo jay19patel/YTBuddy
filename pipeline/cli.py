@@ -13,10 +13,10 @@ import time
 import wave
 from pathlib import Path
 
-from pipeline import codegen, markup, mux, plan, render, transcribe
-from pipeline.schema import Brand, Timeline, VideoInfo
+from pipeline import codegen, markup, plan, render, transcribe, video
+from pipeline.schema import Timeline
 from pipeline.settings import ROOT, Settings, load
-from pipeline.theme import PALETTE
+from pipeline.video import video_info
 
 log = logging.getLogger("pipeline")
 DEMO = ROOT / "demo"
@@ -41,9 +41,6 @@ def main(argv: list[str] | None = None) -> int:
     m.add_argument("--sfx", action="store_true", help="add pops/whooshes/clicks from assets/sfx")
     m.add_argument(
         "--llm", action="store_true", help="auto mode: let the LLM in config pick scenes, colours and stickers"
-    )
-    m.add_argument(
-        "--simple", action="store_true", help="fallback: the old ASS subtitle renderer (needs ffmpeg with libass)"
     )
     m.add_argument("--until", type=float, help="only render the first N seconds")
     m.add_argument("--keep-temp", action="store_true")
@@ -89,7 +86,6 @@ def main(argv: list[str] | None = None) -> int:
                 a.music,
                 a.sfx,
                 a.llm,
-                a.simple,
                 a.until,
                 a.keep_temp,
             )
@@ -115,14 +111,6 @@ def _logging(as_json: bool) -> None:
         )
 
 
-def video_info(cfg: Settings, fmt: str) -> VideoInfo:
-    w, h = cfg.size(fmt)
-    brand = Brand(
-        handle=cfg.brand.handle, avatar=cfg.brand.avatar, character=cfg.brand.character, palette=dict(PALETTE)
-    )
-    return VideoInfo(width=w, height=h, fps=cfg.fps, duration_frames=1, brand=brand)
-
-
 def make(
     cfg: Settings,
     audio: Path,
@@ -134,7 +122,6 @@ def make(
     music: Path | None,
     sfx: bool,
     llm: bool,
-    simple: bool,
     until: float | None,
     keep_temp: bool,
 ) -> Path:
@@ -144,8 +131,7 @@ def make(
     for f in (audio, script, storyboard, words_file, music):
         if f and not f.exists():
             raise FileNotFoundError(f"{f} does not exist")
-    if not simple:
-        render.preflight(cfg.renderer)
+    render.preflight(cfg.renderer)
     story = plan.load_story(storyboard) if storyboard else None
     tokens = (
         plan.script_of(story)
@@ -165,21 +151,10 @@ def make(
     if not words:
         raise ValueError("no words were found in the audio")
     total = FFmpegMediaProcessor().duration(audio)
-    if story is None:
-        if llm:
-            try:
-                names = sorted(p.stem for p in (cfg.assets / "stickers").glob("*.png"))
-                story = plan.llm_story(tokens, words, cfg.plan.llm_model, names)
-            except Exception as e:  # any bad reply falls back to the rules; the reason is logged
-                log.warning("LLM plan rejected (%s); using the rule-based plan", e)
-        story = story or plan.auto_story(
-            tokens, words, cfg.plan.min_scene_s, cfg.plan.max_scene_s, bool(cfg.brand.character)
-        )
+    story = story or video.auto_story(cfg, tokens, words, llm)
     timeline = plan.plan(story, words, video_info(cfg, fmt), total)
     if until:
         timeline = cut(timeline, until)
-    if missing := plan.missing_assets(timeline, cfg.assets):
-        raise FileNotFoundError(f"missing in {cfg.assets}: {', '.join(missing)}")
 
     out_dir.mkdir(parents=True, exist_ok=True)
     name = f"{audio.stem}-{fmt}"
@@ -196,27 +171,7 @@ def make(
             )
         final = out_dir / f"{name}.mp4"
         part = out_dir / f".{name}.part.mp4"
-        if simple:
-            units = [{"text": w.word, "start": w.start, "end": w.end, "words": []} for w in words]
-            FFmpegMediaProcessor().render_subtitle_video(units, audio, fmt == "9x16", "dark", part)
-        else:
-            props = work / "props.json"
-            props.write_text(json.dumps({"timeline": timeline.model_dump(mode="json")}), encoding="utf-8")
-            silent = work / "silent.mp4"
-            render.run(render.render_cmd("Main", props, silent, cfg.video.crf), cfg.renderer, cfg.video.timeout_s)
-            duration = timeline.video.duration_frames / timeline.video.fps
-            cues = mux.sfx_cues(timeline, cfg.assets / "sfx") if sfx else []
-            if sfx and not cues:
-                log.warning("--sfx: no pop/whoosh/click/typing .wav files in %s", cfg.assets / "sfx")
-            log.info(
-                "muxing voice%s%s, loudness %s LUFS",
-                " + music" if music else "",
-                f" + {len(cues)} sfx" if cues else "",
-                cfg.audio.lufs,
-            )
-            from ytstudio.adapters.media import _ffmpeg
-
-            _ffmpeg(*mux.mux_cmd(silent, audio, part, duration, cfg.audio, music, cues), timeout=cfg.video.timeout_s)
+        video.render_video(cfg, timeline, audio, part, work, music, sfx)
         os.replace(part, final)
     finally:
         if keep_temp:
@@ -326,7 +281,7 @@ def demo(cfg: Settings, fmt: str, out: Path, until: float | None, write_timeline
     words_file = out / "demo-fake.words.json"
     click_track(words, total, wav)
     transcribe.save(words, words_file)
-    make(cfg, wav, None, DEMO / "story.yaml", words_file, fmt, out, None, False, False, False, until, False)
+    make(cfg, wav, None, DEMO / "story.yaml", words_file, fmt, out, None, False, False, until, False)
 
 
 if __name__ == "__main__":
