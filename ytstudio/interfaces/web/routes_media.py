@@ -159,13 +159,15 @@ def trim(asset_id: int, start: float = Form(...), end: float = Form(...), p: Pag
 
 
 @router.post("/shorts/{asset_id}/upload", dependencies=[Depends(publish_enabled)])
-def upload_short(
+@router.post("/assets/{asset_id}/upload", dependencies=[Depends(publish_enabled)])
+def upload_video(
     asset_id: int,
     title: str = Form(""),
     description: str = Form(""),
     tags: str = Form(""),
     privacy: str = Form("private"),
     publish_at: str = Form(""),
+    next: str = Form("/shorts"),
     p: Page = Depends(csrf),
 ) -> Response:
     c = get_container()
@@ -175,7 +177,7 @@ def upload_short(
             when = parse_local_datetime(publish_at, uow.schedules.get(p.channel_id).timezone, c.clock.now())
     tag_list = [t.strip() for t in tags.split(",") if t.strip()]
     c.shorts.publish(p.user.id, asset_id, title, description, tag_list, privacy, when, c.clock.now())
-    return back("/shorts", "short_uploaded")
+    return back(next if next.startswith("/") and not next.startswith("//") else "/shorts", "short_uploaded")
 
 
 @router.get("/files/asset/{asset_id}/{what}")

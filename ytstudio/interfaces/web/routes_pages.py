@@ -1,6 +1,7 @@
 """Today, ideas backlog, asset/script editor, insights, trends."""
 
 import json
+import shlex
 from typing import Any
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
@@ -105,6 +106,35 @@ def develop(idea_id: int, p: Page = Depends(csrf)) -> Response:
     return started(f"/assets/{idea_id}", get_container().review.develop(p.user.id, idea_id))
 
 
+def upload_context(p: Page, a: dict[str, Any]) -> dict[str, Any]:
+    """What the upload form starts with: a Short's own title and description; for a long video the best title from its
+    package and the description and tags from its SEO (they hang under the same idea as the script)."""
+    d = a["data"]
+    with get_container().uow() as uow:
+        tz = uow.schedules.get(a["channel_id"]).timezone
+        keywords = uow.channels.get(a["channel_id"]).keywords
+    if asset_format(d) == "short":
+        try:
+            extra = shlex.split(keywords)[:6]
+        except ValueError:
+            extra = []
+        prefill = {
+            "title": d.get("title") or a["title"],
+            "description": d.get("description", ""),
+            "tags": ", ".join(["Shorts", *extra]),
+        }
+    else:
+        made = queries().developed(p.user.id, a["channel_id"], a["parent_id"]) if a["parent_id"] else {}
+        pairs = (made.get("package") or {}).get("data", {}).get("pairs") or []
+        seo = (made.get("seo") or {}).get("data", {})
+        prefill = {
+            "title": pairs[0]["title"] if pairs else a["title"],
+            "description": seo.get("description", ""),
+            "tags": ", ".join(seo.get("tags", [])),
+        }
+    return {"prefill": prefill, "tz": tz}
+
+
 @router.get("/assets/{asset_id}")
 def asset(request: Request, asset_id: int, p: Page = Depends(page)) -> Response:
     a = queries().asset(p.user.id, asset_id)
@@ -117,6 +147,7 @@ def asset(request: Request, asset_id: int, p: Page = Depends(page)) -> Response:
     switched = not p.active or p.active["id"] != own["id"]
     p.active = own  # opened from a link or bookmark of another channel: show it under its own channel
     developed = q.developed(p.user.id, a["channel_id"], a["id"]) if a["kind"] == "idea" else {}
+    extra = upload_context(p, a) if a["kind"] == "script" else {}
     run_id = request.query_params.get("run")
     resp = render(
         p,
@@ -124,6 +155,7 @@ def asset(request: Request, asset_id: int, p: Page = Depends(page)) -> Response:
         a=a,
         developed=developed,
         run=(q.run(p.user.id, int(run_id)) if run_id and run_id.isdigit() else None) or q.run_for_asset(p.user.id, a),
+        **extra,
     )
     if switched:
         cookie(resp, "channel", own["id"], 365 * 86400)

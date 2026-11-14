@@ -230,7 +230,7 @@ def test_shorts_page_upload_button_and_green_tick(container, user_and_channel, y
     client, token = logged_in(db_url, user_id)
     page = client.get("/shorts").text
     assert (
-        f'action="/shorts/{short.id}/upload"' in page
+        f'action="/assets/{short.id}/upload"' in page
         and "Upload to YouTube" in page
         and "Uploaded to YouTube" not in page
     )
@@ -242,7 +242,7 @@ def test_shorts_page_upload_button_and_green_tick(container, user_and_channel, y
     assert (
         "Uploaded to YouTube" in page
         and "https://youtu.be/vid123" in page
-        and f'action="/shorts/{short.id}/upload"' not in page
+        and f'action="/assets/{short.id}/upload"' not in page
     )
     again = client.post(f"/shorts/{short.id}/upload", data={"csrf": token}, follow_redirects=False)
     assert again.status_code != 500

@@ -90,3 +90,56 @@ def test_script_page_has_the_generate_button_the_player_and_a_broll_list(contain
     assert "Video ready" in client.get("/scripts?format=long").text
     bad = client.post(f"/scripts/{long_script.id + 9999}/video", data={"csrf": token}, follow_redirects=False)
     assert bad.status_code == 404
+
+
+def test_a_long_video_made_from_a_script_uploads_with_its_package_title_and_seo(
+    container, user_and_channel, db_url, yt
+):
+    user_id, long_script, short_script = scripts(container, user_and_channel)
+    client, token = logged_in(db_url, user_id)
+    before = client.get(f"/assets/{long_script.id}").text
+    assert "Upload to YouTube</button>" not in before and "After the video is made" in before  # no video yet
+    container.review.make_video(user_id, long_script.id)
+    page = client.get(f"/assets/{long_script.id}").text
+    assert f'action="/assets/{long_script.id}/upload"' in page and "Upload to YouTube" in page
+    assert 'value="I tracked rent for 90 days"' in page  # the package's best title
+    assert "How I cut rent." in page and 'value="rent, india"' in page  # the SEO description and tags
+    r = client.post(
+        f"/assets/{long_script.id}/upload",
+        data={
+            "csrf": token,
+            "title": "My long title",
+            "description": "Long text",
+            "tags": "a, b",
+            "privacy": "unlisted",
+            "next": f"/assets/{long_script.id}",
+        },
+        follow_redirects=False,
+    )
+    assert r.status_code == 303 and r.headers["location"].startswith(f"/assets/{long_script.id}?m=short_uploaded")
+    body = yt.uploaded[-1]
+    assert body["snippet"]["title"] == "My long title" and "#Shorts" not in body["snippet"]["description"]
+    assert body["snippet"]["tags"] == ["a", "b"] and body["status"]["privacyStatus"] == "unlisted"
+    done = client.get(f"/assets/{long_script.id}").text
+    assert (
+        "Uploaded to YouTube" in done and "https://youtu.be/vid123" in done and "Upload to YouTube</button>" not in done
+    )
+    with container.uow() as uow:
+        saved = uow.assets.get(long_script.id, user_id)
+    assert (
+        saved.title == long_script.title and saved.data["youtube_title"] == "My long title"
+    )  # the idea keeps its name
+    again = client.post(f"/assets/{long_script.id}/upload", data={"csrf": token}, follow_redirects=False)
+    assert again.status_code != 500 and len(yt.uploaded) == 1  # never uploaded twice
+
+
+def test_a_short_script_video_uploads_as_a_short(container, user_and_channel, db_url, yt):
+    user_id, _, short_script = scripts(container, user_and_channel)
+    container.review.make_video(user_id, short_script.id)
+    client, token = logged_in(db_url, user_id)
+    page = client.get(f"/assets/{short_script.id}").text
+    assert 'value="Stop overpaying rent"' in page and "One trick that cut my rent." in page and 'value="Shorts"' in page
+    client.post(f"/assets/{short_script.id}/upload", data={"csrf": token, "privacy": "private"}, follow_redirects=False)
+    assert yt.uploaded[-1]["snippet"]["description"].endswith("#Shorts")
+    nothing = client.post(f"/assets/{short_script.id + 5000}/upload", data={"csrf": token}, follow_redirects=False)
+    assert nothing.status_code == 404

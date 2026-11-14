@@ -11,6 +11,33 @@
 </nav>
 {%- endmacro %}
 
+{% macro uploaded_box(d) -%}
+<div class="uploaded" role="status">
+  <span class="tick" aria-hidden="true">✓</span>
+  <div>
+    <strong>Uploaded to YouTube</strong>
+    <span>{{ "Private. Goes public " ~ (d.publish_at[:16] | replace("T", " ")) ~ " UTC." if d.publish_at else d.privacy | capitalize ~ "." }}</span>
+    <span><a href="https://youtu.be/{{ d.youtube_id }}" target="_blank" rel="noopener">Watch it</a> · <a href="https://studio.youtube.com/video/{{ d.youtube_id }}/edit" target="_blank" rel="noopener">Open in YouTube Studio</a></span>
+  </div>
+</div>
+{%- endmacro %}
+
+{% macro upload_form(id, title, description, tags, tz, is_short, next) -%}
+<form class="up-form" method="post" action="/assets/{{ id }}/upload">
+  <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="next" value="{{ next }}">
+  <details class="edit"><summary>Upload settings: title, description, tags, schedule</summary>
+    <div class="row"><label class="field" for="t{{ id }}">Title</label><input type="text" id="t{{ id }}" name="title" value="{{ title }}" maxlength="100"></div>
+    <div class="row"><label class="field" for="d{{ id }}">Description</label><textarea id="d{{ id }}" name="description" rows="5">{{ description }}</textarea>{% if is_short %}<p class="hint">#Shorts is added for you.</p>{% endif %}</div>
+    <div class="row"><label class="field" for="g{{ id }}">Tags</label><input type="text" id="g{{ id }}" name="tags" value="{{ tags }}"><p class="hint">Separate with commas.</p></div>
+    <div class="row"><label class="field" for="p{{ id }}">Schedule (optional)</label><input type="datetime-local" id="p{{ id }}" name="publish_at"><p class="hint">Time zone: {{ tz }}. Leave empty to use the visibility below right away.</p></div>
+  </details>
+  <div class="actions">
+    <select name="privacy" aria-label="Visibility"><option value="private">Private</option><option value="unlisted">Unlisted</option><option value="public">Public</option></select>
+    <button class="btn" type="submit" data-busy="Uploading… keep this tab open"><i data-lucide="youtube"></i>Upload to YouTube</button>
+  </div>
+</form>
+{%- endmacro %}
+
 {% macro post(action, label, cls="btn small", fields={}, confirm=None) -%}
 <form method="post" action="{{ action }}"{% if confirm %} data-confirm="{{ confirm }}"{% endif %}>
   <input type="hidden" name="csrf" value="{{ csrf }}">

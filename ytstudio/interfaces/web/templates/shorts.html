@@ -68,29 +68,8 @@
           <button class="btn small">Re-render</button></form>
       </details>
       {{ m.review_actions(s, "/shorts") }}
-      {% if d.youtube_id %}
-      <div class="uploaded" role="status">
-        <span class="tick" aria-hidden="true">✓</span>
-        <div>
-          <strong>Uploaded to YouTube</strong>
-          <span>{{ "Private. Goes public " ~ (d.publish_at[:16] | replace("T", " ")) ~ " UTC." if d.publish_at else d.privacy | capitalize ~ "." }}</span>
-          <span><a href="https://youtu.be/{{ d.youtube_id }}" target="_blank" rel="noopener">Watch it</a> · <a href="https://studio.youtube.com/video/{{ d.youtube_id }}/edit" target="_blank" rel="noopener">Open in YouTube Studio</a></span>
-        </div>
-      </div>
-      {% elif s.status != "discarded" and flags.publish %}
-      <form class="up-form" method="post" action="/shorts/{{ s.id }}/upload">
-        <input type="hidden" name="csrf" value="{{ csrf }}">
-        <details class="edit"><summary>Upload settings: title, description, tags, schedule</summary>
-          <div class="row"><label class="field" for="t{{ s.id }}">Title</label><input type="text" id="t{{ s.id }}" name="title" value="{{ s.title }}" maxlength="100"></div>
-          <div class="row"><label class="field" for="d{{ s.id }}">Description</label><textarea id="d{{ s.id }}" name="description" rows="4">{{ d.description }}</textarea><p class="hint">#Shorts is added for you.</p></div>
-          <div class="row"><label class="field" for="g{{ s.id }}">Tags</label><input type="text" id="g{{ s.id }}" name="tags" value="{{ default_tags }}"><p class="hint">Separate with commas.</p></div>
-          <div class="row"><label class="field" for="p{{ s.id }}">Schedule (optional)</label><input type="datetime-local" id="p{{ s.id }}" name="publish_at"><p class="hint">Time zone: {{ tz }}. Leave empty to use the visibility below right away.</p></div>
-        </details>
-        <div class="actions">
-          <select name="privacy" aria-label="Visibility"><option value="private">Private</option><option value="unlisted">Unlisted</option><option value="public">Public</option></select>
-          <button class="btn" type="submit" data-busy="Uploading… keep this tab open"><i data-lucide="youtube"></i>Upload to YouTube</button>
-        </div>
-      </form>
+      {% if d.youtube_id %}{{ m.uploaded_box(d) }}
+      {% elif s.status != "discarded" and flags.publish %}{{ m.upload_form(s.id, s.title, d.description, default_tags, tz, true, "/shorts") }}
       {% endif %}
       <p><a href="/files/asset/{{ s.id }}/video?download=1">Download MP4</a>{% if d.cover_key %} · <a href="/files/asset/{{ s.id }}/cover?download=1">Cover</a>{% endif %}</p>
     </article>

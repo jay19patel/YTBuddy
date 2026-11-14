@@ -47,7 +47,7 @@ MESSAGES = {
     "done_already": "That is already done. The script, titles and SEO are on this page.",
     "uploaded": "Upload finished. Your file is ready: press Make Shorts next to it.",
     "master_deleted": "File deleted. Shorts already made from it are kept.",
-    "short_uploaded": "Uploaded to YouTube. The Short now shows a green Uploaded tick with its link.",
+    "short_uploaded": "Uploaded to YouTube. It now shows a green Uploaded tick with its link.",
     "busy": "Another run for this channel is active.",
 }
 

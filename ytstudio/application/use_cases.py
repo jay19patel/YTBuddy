@@ -518,18 +518,20 @@ class Shorts:
         publish_at: datetime | None,
         now: datetime,
     ) -> str:
-        """Upload one rendered Short when the user presses the button. Returns the YouTube video id."""
+        """Upload a rendered Short, or the video made from a script (a Short or a long video), when the user presses
+        the button. Returns the YouTube video id."""
         with self.uow() as uow:
             a = uow.assets.get(asset_id, user_id)
-        if a.kind != "short" or not a.data.get("video_key"):
-            raise PermanentError("Only a rendered Short can be uploaded.")
+        if a.kind not in ("short", "script") or not a.data.get("video_key"):
+            raise PermanentError("Only a rendered Short, or a script with its video made, can be uploaded.")
         if a.data.get("youtube_id"):
-            raise PermanentError(f"This Short is already on YouTube: https://youtu.be/{a.data['youtube_id']}")
+            raise PermanentError(f"This video is already on YouTube: https://youtu.be/{a.data['youtube_id']}")
         if privacy not in PRIVACY:
             raise PermanentError("Pick private, unlisted or public.")
-        title = (title.strip() or a.title)[:100]
+        is_short = a.kind == "short" or format_of(a.data) == "short"
+        title = (title.strip() or str(a.data.get("title") or a.title))[:100]
         description = description.strip()
-        if "#shorts" not in (title + description).lower():
+        if is_short and "#shorts" not in (title + description).lower():
             description = f"{description}\n\n#Shorts".strip()  # YouTube uses the tag to classify the video as a Short
         status: dict[str, Any] = {"privacyStatus": privacy, "selfDeclaredMadeForKids": False}
         if publish_at:  # uploaded as private now, YouTube makes it public at that time
@@ -541,10 +543,13 @@ class Shorts:
         video_id = self.youtube.upload(a.channel_id, str(self.storage.get(a.data["video_key"])), body)
         with self.uow() as uow:
             a = uow.assets.get(asset_id, user_id)
-            a.title, a.status = title, AssetStatus.APPROVED
+            a.status = AssetStatus.APPROVED
+            if a.kind == "short":  # a script keeps the idea's name; the video's own title is stored below
+                a.title = title
             a.data = {
                 **a.data,
-                "description": description,
+                "youtube_title": title,
+                "youtube_description": description,
                 "youtube_id": video_id,
                 "uploaded_at": now.isoformat(),
                 "privacy": status["privacyStatus"],
