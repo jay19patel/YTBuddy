@@ -97,3 +97,63 @@ Then add `"summarise_comments"` to a pipeline in `config/pipelines.toml`, add `p
 ## Vendored tools
 
 `vendor/youtube-agent-skill` is MIT and never modified; its commit is recorded in `VENDORED_COMMIT`. `hookscore.py` and `title.py` are imported directly. `swipe.py` and `retention.py` run as `python -I` subprocesses with `--json`. Their output appears in the UI as a "hook panel score", lint score and similar, always labelled as heuristics.
+
+# Kinetic video pipeline
+
+`python -m pipeline make` turns a voice-over into a kinetic typography explainer. It sits beside the web app and reuses
+its FFmpeg runner, audio decoder and logging; the web app's "Generate video" step still uses the ASS renderer
+(`ytstudio/adapters/kinetic.py`), which is also the CLI's `--simple` fallback.
+
+```
+vo.wav ─► transcribe ─► words.json ─► plan ─► timeline.json ─► Remotion render ─► silent.mp4 ─► mux ─► final.mp4
+script/storyboard ─┘  (align)          ▲   (pydantic)                (renderer/)      (h264 yuv420p)   (FFmpeg)
+                                segment (auto mode) / LLM (validated)                         voice + ducked music + SFX
+                                                                                              loudnorm -14 LUFS, +faststart
+```
+
+| Stage | Code | What it does |
+| --- | --- | --- |
+| Transcribe | `pipeline/transcribe.py` | faster-whisper with `word_timestamps=True`; Hinglish decoded as English so it is Roman script. `align()` lays the script's own words onto the recognised times (`difflib` opcodes: matches take ASR times, misspellings share the span, missed words fill the gap). |
+| Segment | `pipeline/segment.py` | sentences end on `. ? ! । —` or a 0.45 s pause; scenes are 3–8 s on sentence boundaries; long sentences split at their longest pause. Used by auto mode. |
+| Plan | `pipeline/plan.py` | storyboard YAML (manual) or `auto_story()` / `llm_story()` → `Timeline`. Spoken entries consume words in order; unspoken ones anchor to words (`@word`, `#index`), seconds or offsets. A scene cuts in 0.12 s before its first word. LLM output must pass `LlmPlan` and coverage checks or the rule-based plan is used. |
+| Schema | `pipeline/schema.py` | pydantic models of `timeline.json` (`extra="forbid"`, palette-checked colours, ordered scenes). `python -m pipeline gen` writes `renderer/src/types.gen.ts`; a test fails when it is stale. |
+| Theme | `pipeline/theme.py` | palette, type scale (fractions of the short side), motion presets in frames @30 fps, shadows, emoji→sticker map → `renderer/src/theme.gen.ts`. No other numbers live in components. |
+| Render | `pipeline/render.py`, `renderer/` | `npx remotion render src/index.ts Main --props=…` (list args), progress logged every 10 %. Public dir is `assets/`. |
+| Mux | `pipeline/mux.py` | video stream copied (no second encode); voice padded to the video length; music looped, trimmed, sidechain-ducked; SFX placed with `adelay`; one `loudnorm` pass to -14 LUFS / -1.5 dBTP; AAC 192k; `+faststart`. |
+
+## Renderer
+
+- `Video.tsx` mounts one `<Sequence>` per scene; a scene stays mounted under the next for that scene's transition
+  (`cut`, `crossfade` 150 ms, `diagonal_wipe`, `split_slide`). Nothing renders until the local fonts are loaded,
+  because text is measured.
+- `Scene.tsx` paints the background (colour, split panel, diagonal panel), the outline keyword, brackets, deco column
+  and watermark, then the elements. Text-like elements (`text_line`, `card`, `tag_pill`, `list_reveal`, `swatches`)
+  flow in a column in the layout's text area; elements that overlap in time form a block whose lines keep their place
+  (later words hold their space, so nothing reflows when a word is spoken). Everything else is positioned in the
+  visual area.
+- `layout.ts` gives text and visual areas per layout. In 9:16, side-by-side areas become top/bottom, so the design is
+  re-laid, not cropped.
+- `fit.ts` measures every word with the real font (`@remotion/layout-utils`) and picks the largest scale ≤ 1 at which
+  no word is wider than the text area and the block is no taller than it. One scale per scene keeps hierarchy.
+- Every word appears on `Math.round(start × fps)`, the same rule as `pipeline.schema.frame_of`.
+- Components: AnimatedWord, TextBlock, HighlightBox, StrikeThrough, SerifReveal, OutlineBgWord, Brackets, Watermark,
+  ColorCard, MacWindow (+ AppBody, FinderList, ChatInput, ToolsTable, NoteCard, FolderTree, DropZone), TypingText,
+  TypingBox, KeyBadge, Sticker, ListReveal, CommentBubbles, FollowCard, HandCursor, ApproveReject, DraftCards,
+  StoryboardRow, TimelineCut, Character, AvatarBadge, TagPill, DmCard, Swatches, Transitions, Outro, InstagramIcon,
+  EmojiText, DecoColumn.
+
+## Guide: add a component
+
+1. Add `XProps` and `X(Base)` with `type: Literal["x"]` in `pipeline/schema.py`, and add it to `Element`.
+2. `python -m pipeline gen`.
+3. Write `renderer/src/components/X.tsx` taking `props` and `at` (scene-relative frame); use `useUnits()`,
+   `useScene()`, `useRel()` and the presets in `motion.ts`/`THEME`.
+4. Add a case in `Visual` (or `FLOW` + `FlowItem` for a text-column item) in `Scene.tsx`, and use it in
+   `demo/story.yaml`.
+
+## Assets and licences
+
+`assets/fonts`: Inter Tight, Playfair Display, Bebas Neue (SIL OFL, licence files alongside). `assets/stickers`:
+Microsoft Fluent Emoji 3D (MIT, `LICENSE-FluentEmoji.txt`). Inline emoji in on-screen text are drawn with these
+stickers; unknown emoji are dropped, so the system (Apple) emoji font is never used. `assets/brand`: placeholders
+drawn for this repo; replace them with your own avatar and character. `assets/sfx`, music: yours.

@@ -1,0 +1,959 @@
+{
+ "video": {
+  "width": 1920,
+  "height": 1080,
+  "fps": 30,
+  "duration_frames": 660,
+  "brand": {
+   "handle": "@njtechstudio",
+   "avatar": "brand/avatar.svg",
+   "character": "brand/character.svg",
+   "palette": {
+    "black": "#030003",
+    "orange": "#DF5C1D",
+    "blue": "#2533F8",
+    "beige": "#E9E5DC",
+    "crimson": "#DA2C32",
+    "charcoal": "#1B181D",
+    "yellow": "#F5C842",
+    "green": "#34C759",
+    "gold": "#C9A227",
+    "darkred": "#B3161D",
+    "white": "#FFFFFF",
+    "ink": "#111111",
+    "gray": "#6B6B6B"
+   },
+   "fonts": {
+    "sans": "Inter Tight",
+    "serif": "Playfair Display",
+    "display": "Bebas Neue"
+   }
+  }
+ },
+ "scenes": [
+  {
+   "id": "s01",
+   "start": 0.0,
+   "end": 3.58,
+   "background": {
+    "kind": "color",
+    "color": "black",
+    "panel": null
+   },
+   "bg_word": null,
+   "deco_text": null,
+   "transition_in": "cut",
+   "layout": "center_bracket",
+   "watermark_pos": "top_right",
+   "elements": [
+    {
+     "start": 0.2,
+     "end": null,
+     "type": "text_line",
+     "props": {
+      "role": "hero",
+      "words": [
+       {
+        "text": "mera",
+        "start": 0.2,
+        "end": 0.537,
+        "style": "normal",
+        "color": null
+       },
+       {
+        "text": "video",
+        "start": 0.596,
+        "end": 0.981,
+        "style": "normal",
+        "color": null
+       },
+       {
+        "text": "editor",
+        "start": 1.049,
+        "end": 1.482,
+        "style": "bold",
+        "color": null
+       }
+      ],
+      "color": null
+     }
+    },
+    {
+     "start": 1.558,
+     "end": null,
+     "type": "card",
+     "props": {
+      "words": [
+       {
+        "text": "na",
+        "start": 1.558,
+        "end": 1.799,
+        "style": "normal",
+        "color": null
+       },
+       {
+        "text": "salary",
+        "start": 1.842,
+        "end": 2.275,
+        "style": "strike",
+        "color": null
+       }
+      ],
+      "color": "crimson",
+      "enter": "bottom"
+     }
+    },
+    {
+     "start": 2.351,
+     "end": null,
+     "type": "card",
+     "props": {
+      "words": [
+       {
+        "text": "na",
+        "start": 2.351,
+        "end": 2.592,
+        "style": "normal",
+        "color": null
+       },
+       {
+        "text": "chhutti",
+        "start": 2.634,
+        "end": 3.115,
+        "style": "normal",
+        "color": null
+       }
+      ],
+      "color": "blue",
+      "enter": "right"
+     }
+    }
+   ]
+  },
+  {
+   "id": "s02",
+   "start": 3.58,
+   "end": 5.58,
+   "background": {
+    "kind": "color",
+    "color": "orange",
+    "panel": null
+   },
+   "bg_word": "reel",
+   "deco_text": null,
+   "transition_in": "cut",
+   "layout": "left_text",
+   "watermark_pos": "top_right",
+   "elements": [
+    {
+     "start": 3.7,
+     "end": null,
+     "type": "text_line",
+     "props": {
+      "role": "lead",
+      "words": [
+       {
+        "text": "aur",
+        "start": 3.7,
+        "end": 3.842,
+        "style": "normal",
+        "color": null
+       },
+       {
+        "text": "yeh",
+        "start": 3.867,
+        "end": 4.008,
+        "style": "normal",
+        "color": null
+       },
+       {
+        "text": "reel",
+        "start": 4.033,
+        "end": 4.199,
+        "style": "normal",
+        "color": null
+       },
+       {
+        "text": "bhi",
+        "start": 4.228,
+        "end": 4.369,
+        "style": "normal",
+        "color": null
+       }
+      ],
+      "color": null
+     }
+    },
+    {
+     "start": 4.394,
+     "end": null,
+     "type": "text_line",
+     "props": {
+      "role": "hero",
+      "words": [
+       {
+        "text": "usi",
+        "start": 4.394,
+        "end": 4.536,
+        "style": "normal",
+        "color": null
+       },
+       {
+        "text": "ne",
+        "start": 4.561,
+        "end": 4.679,
+        "style": "normal",
+        "color": null
+       },
+       {
+        "text": "edit",
+        "start": 4.7,
+        "end": 4.865,
+        "style": "highlight",
+        "color": "white"
+       }
+      ],
+      "color": null
+     }
+    },
+    {
+     "start": 4.894,
+     "end": null,
+     "type": "text_line",
+     "props": {
+      "role": "sub",
+      "words": [
+       {
+        "text": "ki",
+        "start": 4.894,
+        "end": 5.013,
+        "style": "normal",
+        "color": null
+       },
+       {
+        "text": "hai",
+        "start": 5.033,
+        "end": 5.175,
+        "style": "normal",
+        "color": null
+       }
+      ],
+      "color": null
+     }
+    },
+    {
+     "start": 4.7,
+     "end": null,
+     "type": "sticker",
+     "props": {
+      "name": "film",
+      "x": 0.62,
+      "y": 0.32,
+      "size": 1.0,
+      "rotate": 0.0,
+      "cross": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "s03",
+   "start": 5.58,
+   "end": 8.58,
+   "background": {
+    "kind": "color",
+    "color": "blue",
+    "panel": null
+   },
+   "bg_word": "60",
+   "deco_text": null,
+   "transition_in": "cut",
+   "layout": "text_plus_character",
+   "watermark_pos": "top_right",
+   "elements": [
+    {
+     "start": 5.7,
+     "end": null,
+     "type": "character",
+     "props": {
+      "side": "right"
+     }
+    },
+    {
+     "start": 5.7,
+     "end": null,
+     "type": "text_line",
+     "props": {
+      "role": "lead",
+      "words": [
+       {
+        "text": "agle",
+        "start": 5.7,
+        "end": 5.929,
+        "style": "normal",
+        "color": null
+       },
+       {
+        "text": "60",
+        "start": 5.969,
+        "end": 6.133,
+        "style": "bold",
+        "color": null
+       },
+       {
+        "text": "second",
+        "start": 6.162,
+        "end": 6.456,
+        "style": "normal",
+        "color": null
+       },
+       {
+        "text": "mein",
+        "start": 6.508,
+        "end": 6.737,
+        "style": "normal",
+        "color": null
+       }
+      ],
+      "color": null
+     }
+    },
+    {
+     "start": 6.777,
+     "end": null,
+     "type": "text_line",
+     "props": {
+      "role": "hero",
+      "words": [
+       {
+        "text": "yeh",
+        "start": 6.777,
+        "end": 6.973,
+        "style": "normal",
+        "color": null
+       },
+       {
+        "text": "editor",
+        "start": 7.008,
+        "end": 7.302,
+        "style": "normal",
+        "color": null
+       }
+      ],
+      "color": null
+     }
+    },
+    {
+     "start": 7.354,
+     "end": null,
+     "type": "text_line",
+     "props": {
+      "role": "hero",
+      "words": [
+       {
+        "text": "aapka",
+        "start": 7.354,
+        "end": 7.615,
+        "style": "highlight",
+        "color": null
+       },
+       {
+        "text": "bhi",
+        "start": 7.662,
+        "end": 7.858,
+        "style": "normal",
+        "color": null
+       },
+       {
+        "text": "hoga.",
+        "start": 7.892,
+        "end": 8.154,
+        "style": "normal",
+        "color": null
+       }
+      ],
+      "color": null
+     }
+    },
+    {
+     "start": 5.969,
+     "end": null,
+     "type": "sticker",
+     "props": {
+      "name": "stopwatch",
+      "x": 0.15,
+      "y": 0.18,
+      "size": 0.9,
+      "rotate": 0.0,
+      "cross": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "s04",
+   "start": 8.58,
+   "end": 14.58,
+   "background": {
+    "kind": "color",
+    "color": "beige",
+    "panel": null
+   },
+   "bg_word": null,
+   "deco_text": null,
+   "transition_in": "cut",
+   "layout": "left_text",
+   "watermark_pos": "top_right",
+   "elements": [
+    {
+     "start": 8.7,
+     "end": null,
+     "type": "text_line",
+     "props": {
+      "role": "lead",
+      "words": [
+       {
+        "text": "pichhli",
+        "start": 8.7,
+        "end": 9.398,
+        "style": "normal",
+        "color": null
+       },
+       {
+        "text": "video",
+        "start": 9.521,
+        "end": 10.079,
+        "style": "normal",
+        "color": null
+       },
+       {
+        "text": "ke",
+        "start": 10.178,
+        "end": 10.526,
+        "style": "normal",
+        "color": null
+       },
+       {
+        "text": "baad",
+        "start": 10.588,
+        "end": 11.076,
+        "style": "normal",
+        "color": null
+       }
+      ],
+      "color": null
+     }
+    },
+    {
+     "start": 11.163,
+     "end": null,
+     "type": "text_line",
+     "props": {
+      "role": "hero",
+      "words": [
+       {
+        "text": "sabne",
+        "start": 11.163,
+        "end": 11.721,
+        "style": "normal",
+        "color": null
+       },
+       {
+        "text": "ek",
+        "start": 11.819,
+        "end": 12.168,
+        "style": "normal",
+        "color": null
+       },
+       {
+        "text": "hi",
+        "start": 12.23,
+        "end": 12.579,
+        "style": "normal",
+        "color": null
+       },
+       {
+        "text": "cheez",
+        "start": 12.64,
+        "end": 13.199,
+        "style": "accent",
+        "color": "crimson"
+       },
+       {
+        "text": "poochhi—",
+        "start": 13.297,
+        "end": 14.065,
+        "style": "normal",
+        "color": null
+       }
+      ],
+      "color": null
+     }
+    },
+    {
+     "start": 8.7,
+     "end": null,
+     "type": "avatar_badge",
+     "props": {
+      "x": 0.5,
+      "y": 0.1
+     }
+    },
+    {
+     "start": 13.297,
+     "end": null,
+     "type": "sticker",
+     "props": {
+      "name": "question",
+      "x": 0.85,
+      "y": 0.08,
+      "size": 0.7,
+      "rotate": 0.0,
+      "cross": false
+     }
+    },
+    {
+     "start": 11.163,
+     "end": null,
+     "type": "comment_bubbles",
+     "props": {
+      "items": [
+       {
+        "label": "rahul.edits",
+        "at": 11.819,
+        "icon": null,
+        "sub": "bhai AI se edit karte kaise ho? 🤔",
+        "depth": 0,
+        "highlight_at": null,
+        "color": null
+       },
+       {
+        "label": "priya_creates",
+        "at": 12.64,
+        "icon": null,
+        "sub": "kaunsa app use karte ho??",
+        "depth": 0,
+        "highlight_at": null,
+        "color": null
+       },
+       {
+        "label": "techwithsam",
+        "at": 13.297,
+        "icon": null,
+        "sub": "tutorial pls 🙏",
+        "depth": 0,
+        "highlight_at": null,
+        "color": null
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "s05",
+   "start": 14.58,
+   "end": 15.58,
+   "background": {
+    "kind": "color",
+    "color": "crimson",
+    "panel": null
+   },
+   "bg_word": "system",
+   "deco_text": null,
+   "transition_in": "cut",
+   "layout": "left_text",
+   "watermark_pos": "top_right",
+   "elements": [
+    {
+     "start": 14.7,
+     "end": null,
+     "type": "text_line",
+     "props": {
+      "role": "lead",
+      "words": [
+       {
+        "text": "toh",
+        "start": 14.7,
+        "end": 14.741,
+        "style": "normal",
+        "color": null
+       },
+       {
+        "text": "aaj",
+        "start": 14.748,
+        "end": 14.79,
+        "style": "normal",
+        "color": null
+       }
+      ],
+      "color": null
+     }
+    },
+    {
+     "start": 14.797,
+     "end": null,
+     "type": "text_line",
+     "props": {
+      "role": "hero",
+      "words": [
+       {
+        "text": "poora",
+        "start": 14.797,
+        "end": 14.852,
+        "style": "normal",
+        "color": null
+       },
+       {
+        "text": "system",
+        "start": 14.861,
+        "end": 14.923,
+        "style": "normal",
+        "color": null
+       },
+       {
+        "text": "khol",
+        "start": 14.934,
+        "end": 14.982,
+        "style": "normal",
+        "color": null
+       },
+       {
+        "text": "ke",
+        "start": 14.99,
+        "end": 15.025,
+        "style": "normal",
+        "color": null
+       }
+      ],
+      "color": null
+     }
+    },
+    {
+     "start": 15.031,
+     "end": null,
+     "type": "text_line",
+     "props": {
+      "role": "sub",
+      "words": [
+       {
+        "text": "rakh",
+        "start": 15.031,
+        "end": 15.079,
+        "style": "normal",
+        "color": null
+       },
+       {
+        "text": "deta",
+        "start": 15.087,
+        "end": 15.135,
+        "style": "normal",
+        "color": null
+       },
+       {
+        "text": "hoon",
+        "start": 15.144,
+        "end": 15.192,
+        "style": "normal",
+        "color": null
+       }
+      ],
+      "color": null
+     }
+    },
+    {
+     "start": 14.861,
+     "end": null,
+     "type": "sticker",
+     "props": {
+      "name": "key",
+      "x": 0.55,
+      "y": 0.25,
+      "size": 1.0,
+      "rotate": 0.0,
+      "cross": false
+     }
+    },
+    {
+     "start": 14.934,
+     "end": null,
+     "type": "sticker",
+     "props": {
+      "name": "package",
+      "x": 0.8,
+      "y": 0.6,
+      "size": 1.0,
+      "rotate": 0.0,
+      "cross": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "s06",
+   "start": 15.58,
+   "end": 22.0,
+   "background": {
+    "kind": "split",
+    "color": "beige",
+    "panel": "blue"
+   },
+   "bg_word": null,
+   "deco_text": null,
+   "transition_in": "cut",
+   "layout": "split_panel",
+   "watermark_pos": "top_right",
+   "elements": [
+    {
+     "start": 15.7,
+     "end": 17.59,
+     "type": "tag_pill",
+     "props": {
+      "label": "step 01",
+      "color": "yellow",
+      "text_color": "ink"
+     }
+    },
+    {
+     "start": 15.7,
+     "end": 17.59,
+     "type": "text_line",
+     "props": {
+      "role": "lead",
+      "words": [
+       {
+        "text": "sabse",
+        "start": 15.7,
+        "end": 15.979,
+        "style": "normal",
+        "color": null
+       },
+       {
+        "text": "pehle",
+        "start": 16.029,
+        "end": 16.308,
+        "style": "normal",
+        "color": null
+       }
+      ],
+      "color": null
+     }
+    },
+    {
+     "start": 16.358,
+     "end": 17.59,
+     "type": "text_line",
+     "props": {
+      "role": "hero",
+      "words": [
+       {
+        "text": "claude",
+        "start": 16.358,
+        "end": 16.672,
+        "style": "normal",
+        "color": null
+       },
+       {
+        "text": "ka",
+        "start": 16.727,
+        "end": 16.902,
+        "style": "normal",
+        "color": null
+       }
+      ],
+      "color": null
+     }
+    },
+    {
+     "start": 16.933,
+     "end": 17.59,
+     "type": "text_line",
+     "props": {
+      "role": "hero",
+      "words": [
+       {
+        "text": "desktop",
+        "start": 16.933,
+        "end": 17.282,
+        "style": "highlight",
+        "color": null
+       },
+       {
+        "text": "app",
+        "start": 17.344,
+        "end": 17.553,
+        "style": "highlight",
+        "color": null
+       }
+      ],
+      "color": null
+     }
+    },
+    {
+     "start": 16.933,
+     "end": null,
+     "type": "ui_window",
+     "props": {
+      "kind": "app",
+      "title": "Claude",
+      "items": [],
+      "text": "",
+      "text_at": null,
+      "paste": false,
+      "image": null
+     }
+    },
+    {
+     "start": 17.59,
+     "end": null,
+     "type": "text_line",
+     "props": {
+      "role": "lead",
+      "words": [
+       {
+        "text": "browser",
+        "start": 17.59,
+        "end": 17.94,
+        "style": "normal",
+        "color": null
+       },
+       {
+        "text": "mein",
+        "start": 18.001,
+        "end": 18.246,
+        "style": "normal",
+        "color": null
+       },
+       {
+        "text": "yeh",
+        "start": 18.289,
+        "end": 18.499,
+        "style": "normal",
+        "color": null
+       },
+       {
+        "text": "kaam",
+        "start": 18.536,
+        "end": 18.78,
+        "style": "normal",
+        "color": null
+       },
+       {
+        "text": "nahi",
+        "start": 18.823,
+        "end": 19.068,
+        "style": "normal",
+        "color": null
+       },
+       {
+        "text": "karega",
+        "start": 19.111,
+        "end": 19.425,
+        "style": "normal",
+        "color": null
+       }
+      ],
+      "color": null
+     }
+    },
+    {
+     "start": 17.59,
+     "end": null,
+     "type": "sticker",
+     "props": {
+      "name": "globe",
+      "x": 0.85,
+      "y": 0.12,
+      "size": 0.8,
+      "rotate": 0.0,
+      "cross": true
+     }
+    },
+    {
+     "start": 19.481,
+     "end": null,
+     "type": "text_line",
+     "props": {
+      "role": "sub",
+      "words": [
+       {
+        "text": "kyunki",
+        "start": 19.481,
+        "end": 19.795,
+        "style": "normal",
+        "color": null
+       },
+       {
+        "text": "video",
+        "start": 19.851,
+        "end": 20.13,
+        "style": "normal",
+        "color": null
+       },
+       {
+        "text": "edit",
+        "start": 20.179,
+        "end": 20.424,
+        "style": "normal",
+        "color": null
+       },
+       {
+        "text": "karta",
+        "start": 20.467,
+        "end": 20.747,
+        "style": "normal",
+        "color": null
+       },
+       {
+        "text": "hai",
+        "start": 20.796,
+        "end": 21.005,
+        "style": "normal",
+        "color": null
+       }
+      ],
+      "color": null
+     }
+    },
+    {
+     "start": 21.042,
+     "end": null,
+     "type": "text_line",
+     "props": {
+      "role": "hero",
+      "words": [
+       {
+        "text": "claude",
+        "start": 21.042,
+        "end": 21.357,
+        "style": "highlight",
+        "color": null
+       },
+       {
+        "text": "code",
+        "start": 21.412,
+        "end": 21.657,
+        "style": "highlight",
+        "color": null
+       }
+      ],
+      "color": null
+     }
+    },
+    {
+     "start": 21.412,
+     "end": null,
+     "type": "sticker",
+     "props": {
+      "name": "laptop",
+      "x": 0.12,
+      "y": 0.85,
+      "size": 0.8,
+      "rotate": 0.0,
+      "cross": false
+     }
+    }
+   ]
+  }
+ ]
+}

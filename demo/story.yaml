@@ -1,0 +1,396 @@
+# The reference video as a storyboard. `start` is only used by `python -m pipeline demo` to fake word timings;
+# with a real voice-over the scene times come from the words.
+# Markers: *bold*  [highlight|colour]  ~strike~  {accent|colour}  !!serif|colour!!
+scenes:
+  - start: 0
+    bg: black
+    layout: center_bracket
+    content:
+      - hero: "mera video *editor*"
+      - card: "na ~salary~"
+        color: crimson
+        enter: bottom
+      - card: "na chhutti"
+        color: blue
+        enter: right
+
+  - start: 3.5
+    bg: orange
+    bg_word: reel
+    content:
+      - lead: "aur yeh reel bhi"
+      - hero: "usi ne [edit|white]"
+      - sub: "ki hai"
+      - sticker: film
+        at: "@edit"
+        x: 0.62
+        y: 0.32
+
+  - start: 5.5
+    bg: blue
+    bg_word: "60"
+    layout: text_plus_character
+    content:
+      - character: right
+      - lead: "agle *60* second mein"
+      - hero: "yeh editor"
+      - hero: "[aapka] bhi hoga."
+      - sticker: stopwatch
+        at: "@60"
+        x: 0.15
+        y: 0.18
+        size: 0.9
+
+  - start: 8.5
+    bg: beige
+    content:
+      - lead: "pichhli video ke baad"
+      - hero: "sabne ek hi {cheez|crimson} poochhi—"
+      - avatar_badge: {x: 0.5, y: 0.1}
+        at: "@pichhli"
+      - sticker: question
+        x: 0.85
+        y: 0.08
+        size: 0.7
+        at: "@poochhi"
+      - comment_bubbles:
+          items:
+            - {label: rahul.edits, sub: "bhai AI se edit karte kaise ho? 🤔", at: "@ek"}
+            - {label: priya_creates, sub: "kaunsa app use karte ho??", at: "@cheez"}
+            - {label: techwithsam, sub: "tutorial pls 🙏", at: "@poochhi"}
+
+  - start: 14.5
+    bg: crimson
+    bg_word: system
+    content:
+      - lead: "toh aaj"
+      - hero: "poora system khol ke"
+      - sub: "rakh deta hoon"
+      - sticker: key
+        at: "@system"
+        x: 0.55
+        y: 0.25
+      - sticker: package
+        at: "@khol"
+        x: 0.8
+        y: 0.6
+
+  - start: 15.5
+    bg: {kind: split, color: beige, panel: blue}
+    layout: split_panel
+    watermark: top_right
+    content:
+      - tag_pill: "step 01"
+      - lead: "sabse pehle"
+      - hero: "claude ka"
+      - hero: "[desktop app]"
+      - ui_window: app
+        title: Claude
+        at: "@desktop"
+      - lead: "browser mein yeh kaam nahi karega"
+        clear: true
+      - sticker: globe
+        cross: true
+        at: "@browser"
+        x: 0.85
+        y: 0.12
+        size: 0.8
+      - sub: "kyunki video edit karta hai"
+      - hero: "[claude code]"
+      - sticker: laptop
+        at: "@code"
+        x: 0.12
+        y: 0.85
+        size: 0.8
+
+  - start: 22
+    bg: orange
+    bg_word: folder
+    layout: text_plus_window
+    content:
+      - lead: "ek naya folder banao"
+      - hero: "[ai video editor|white]"
+      - ui_window: finder
+        title: Desktop
+        at: "@naya"
+        items:
+          - {label: Projects}
+          - {label: Screenshots}
+          - {label: untitled folder, sub: ai video editor, at: "@naya", highlight_at: "@ai"}
+      - lead: "claude code ko isi folder mein kholo"
+        clear: true
+      - tag_pill: {label: "prompt 01", color: black, text_color: yellow}
+      - sub: "aur yeh prompt paste karo"
+      - ui_window: chat
+        at: "@prompt"
+        title: "Claude Code — ai video editor"
+        text: "Set up this folder as my AI video editing workspace: references, raw, brand kit, exports, scripts, assets."
+        text_at: "@paste"
+        paste: true
+      - hero: "claude khud poora setup bana dega"
+        clear: true
+      - ui_window: finder
+        title: ai video editor
+        items:
+          - {label: references, at: "@khud"}
+          - {label: raw, at: "@poora"}
+          - {label: brand kit, at: "@setup"}
+          - {label: exports, at: "@setup"}
+          - {label: scripts, at: "@bana"}
+          - {label: assets, at: "@dega"}
+      - sticker: gear
+        at: "@setup"
+        x: 0.9
+        y: 0.1
+        size: 0.8
+
+  - start: 31.5
+    bg: blue
+    layout: text_plus_window
+    content:
+      - lead: "har cheez ka apna folder"
+      - at: "@har"
+        list_reveal:
+          items:
+            - {label: references, icon: folder, at: "@har"}
+            - {label: raw, icon: folder, at: "@cheez"}
+            - {label: brand kit, icon: folder, color: orange, at: "@apna"}
+            - {label: exports, icon: folder, at: "@folder"}
+      - hero: "sab apni jagah pe ✓"
+      - ui_window: finder
+        title: ai video editor
+        at: "@har"
+        items:
+          - {label: references, highlight_at: "@har"}
+          - {label: raw, highlight_at: "@cheez"}
+          - {label: brand kit, highlight_at: "@apna"}
+          - {label: exports, highlight_at: "@folder"}
+
+  - start: 35.5
+    bg: beige
+    layout: text_plus_window
+    content:
+      - tag_pill: {label: "prompt 02", color: blue, text_color: white}
+      - lead: "usi chat mein doosra prompt daalo."
+      - ui_window: tools
+        at: "@doosra"
+        title: "Claude Code — tools"
+        items:
+          - {label: FFmpeg, sub: cut & encode, at: "@saare"}
+          - {label: Whisper, sub: captions, at: "@editing"}
+          - {label: yt-dlp, sub: references, at: "@tools"}
+          - {label: Remotion, sub: motion graphics, at: "@khud"}
+          - {label: HyperFrames, sub: b-roll, at: "@install"}
+      - hero: "claude saare {editing|blue} {tools|blue}"
+      - sub: "khud install kar lega"
+      - sticker: hammer
+        at: "@install"
+        x: 0.92
+        y: 0.88
+        size: 0.8
+      - caption: "aur sab ke sab"
+
+  - start: 41
+    bg: black
+    layout: center_bracket
+    transition: crossfade
+    content:
+      - hero: "ab asli !!magic!!"
+      - sticker: sparkles
+        at: "@magic"
+        x: 0.78
+        y: 0.25
+        size: 0.8
+      - sticker: wand
+        at: "@magic"
+        x: 0.22
+        y: 0.72
+        size: 0.8
+
+  - start: 42.5
+    bg: crimson
+    bg_word: style
+    layout: text_plus_window
+    content:
+      - lead: "references folder mein"
+      - hero: "apni purani [best reels] daal do"
+      - ui_window: drop
+        at: "@best"
+        title: references
+        items:
+          - {label: reel 01, at: "@best"}
+          - {label: reel 02, at: "@reels"}
+          - {label: reel 03, at: "@daal"}
+          - {label: reel 04, at: "@do"}
+      - lead: "claude unhe dekh ke"
+        clear: true
+      - hero: "aapka editing style seekh leta hai."
+      - sticker: eyes
+        at: "@dekh"
+        x: 0.9
+        y: 0.08
+        size: 0.7
+      - sticker: brain
+        at: "@seekh"
+        x: 0.9
+        y: 0.9
+        size: 0.7
+      - ui_window: note
+        title: brand-kit.md
+        at: "@seekh"
+        items:
+          - {label: "# brand kit", at: "@seekh"}
+          - {label: "font: Inter Tight, lowercase", at: "@leta"}
+          - {label: "colours: black orange blue beige", at: "@hai"}
+          - {label: "cuts every 0.5 s, no dead air", at: "@aur"}
+          - {label: "captions: word by word", at: "@khud"}
+      - lead: "aur aapka khud ka"
+        clear: true
+      - hero: "[brand kit]"
+      - swatches: {shape: dots}
+        at: "@kit"
+      - sticker: palette
+        at: "@brand"
+        x: 0.08
+        y: 0.9
+        size: 0.8
+
+  - start: 50.5
+    bg: beige
+    layout: text_plus_window
+    content:
+      - lead: "jo video edit karni hai, uske naam se"
+      - hero: "[raw|blue] mein ek folder banao"
+      - ui_window: tree
+        at: "@jo"
+        title: AI Video Editor
+        items:
+          - {label: AI Video Editor, at: "@jo"}
+          - {label: references, depth: 1, at: "@jo"}
+          - {label: raw, depth: 1, color: blue, at: "@raw"}
+          - {label: day-06-video, depth: 2, at: "@folder"}
+          - {label: main.mp4, depth: 3, icon: clapper, at: "@raw#2"}
+          - {label: b-rolls, depth: 3, icon: camera, at: "@b-rolls"}
+          - {label: Assets, depth: 1, at: "@daal"}
+      - sub: "apni [raw] video aur {b-rolls|crimson}"
+      - sub: "usmein daal do."
+      - sticker: clapper
+        at: "@video#2"
+        x: 0.95
+        y: 0.1
+        size: 0.6
+
+  - start: 57
+    bg: charcoal
+    content:
+      - tag_pill: {label: "prompt 03", color: green, text_color: white}
+      - lead: "phir teesra prompt."
+      - hero: "claude {retakes|crimson} kaatega"
+      - timeline_cut: {blocks: 9, cuts: [1, 4, 6]}
+        at: "@retakes"
+      - tag_pill: {label: captions, color: white, text_color: ink}
+        at: "@kaatega"
+      - tag_pill: {label: b-roll, color: yellow, text_color: ink}
+        at: "+0.3"
+      - lead: "aur ek storyboard bana ke dega"
+        clear: true
+      - storyboard:
+          items:
+            - {label: beat 01, at: "@storyboard"}
+            - {label: beat 02, at: "@bana"}
+            - {label: beat 03, at: "@ke"}
+            - {label: beat 04, at: "@dega"}
+
+  - start: 64
+    bg: beige
+    content:
+      - lead: "jo pasand aaye"
+      - button_state: approve
+        at: "@pasand"
+        tap_at: "@aaye"
+        until: "@woh"
+      - lead: "jo nahi"
+      - button_state: reject
+        at: "@jo#2"
+        tap_at: "@nahi"
+        until: "@woh"
+      - lead: "ya feedback do"
+      - typing: "b-roll th"
+        at: "@feedback"
+        placeholder: "feedback…"
+        until: "@woh"
+      - hero: "woh agla draft bana dega,"
+        clear: true
+      - draft_cards: {count: 3, approved_at: "@perfect"}
+        at: "@woh"
+      - sub: "jab tak video [perfect] na ho jaaye"
+
+  - start: 71
+    bg: black
+    layout: center_bracket
+    transition: crossfade
+    content:
+      - lead: "aur sabse bada"
+      - hero: "!!secret?|darkred!!"
+      - sticker: lock
+        at: "@secret"
+        x: 0.75
+        y: 0.3
+        size: 0.8
+
+  - start: 72.5
+    bg: blue
+    bg_word: context
+    layout: text_plus_character
+    content:
+      - character: right
+      - hero: "context."
+      - sticker: key
+        at: "@context"
+        x: 0.1
+        y: 0.15
+        size: 0.8
+      - sub: "har video ke saath claude aapka style"
+      - hero: "[aur behtar] samajhta jaata hai."
+      - sticker: chart_up
+        at: "@behtar"
+        x: 0.1
+        y: 0.85
+        size: 0.8
+
+  - start: 76.5
+    bg: {kind: diagonal, color: beige, panel: blue}
+    bg_word: day 06
+    layout: text_plus_window
+    content:
+      - lead: "teeno prompts chahiye?"
+      - tag_pill: {label: "prompt 01", color: black, text_color: yellow}
+      - hero: "comment mein likho"
+      - typing: "PROMPT"
+        at: "@comment"
+        heart: true
+        until: "@seedha"
+      - dm_card: "yeh lo teeno prompts 🔥"
+        chips: [prompt-01.txt, prompt-02.txt, prompt-03.txt]
+        at: "@seedha"
+      - sub: "seedha {DM|crimson} mein bhej dunga"
+
+  - start: 81
+    bg: {kind: diagonal, color: beige, panel: blue}
+    layout: text_plus_window
+    content:
+      - lead: "aur follow kar lo"
+      - button_state: follow
+        at: "@follow"
+        tap_at: "@lo"
+      - sub: "yahan ~no faltu gyaan~"
+      - hero: "sirf [kaam ki cheez.]"
+
+  - start: 84.5
+    bg: black
+    layout: outro
+    watermark: none
+    transition: crossfade
+    duration: 6.1
+    content:
+      - outro: "day 07"

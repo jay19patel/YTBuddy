@@ -26,3 +26,9 @@ coverage.xml
 .mypy_cache/
 .ruff_cache/
 .pytest_cache/
+
+# kinetic pipeline
+!renderer/package.json
+!renderer/package-lock.json
+exports/
+renderer/out/

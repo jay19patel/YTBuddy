@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 1000">
+  <!-- Placeholder presenter. Replace with your own character (config/kinetic.yaml brand.character). -->
+  <rect x="120" y="640" width="70" height="330" rx="30" fill="#1B181D"/>
+  <rect x="210" y="640" width="70" height="330" rx="30" fill="#1B181D"/>
+  <ellipse cx="150" cy="975" rx="55" ry="22" fill="#FFFFFF"/>
+  <ellipse cx="250" cy="975" rx="55" ry="22" fill="#FFFFFF"/>
+  <path d="M90 380 Q90 300 200 300 Q310 300 310 380 L320 680 L80 680 Z" fill="#F5C842"/>
+  <rect x="40" y="360" width="60" height="260" rx="30" fill="#F5C842" transform="rotate(8 70 360)"/>
+  <rect x="300" y="360" width="60" height="260" rx="30" fill="#F5C842" transform="rotate(-8 330 360)"/>
+  <circle cx="58" cy="625" r="30" fill="#E8B48A"/>
+  <circle cx="342" cy="625" r="30" fill="#E8B48A"/>
+  <rect x="175" y="250" width="50" height="60" fill="#E8B48A"/>
+  <circle cx="200" cy="190" r="95" fill="#E8B48A"/>
+  <path d="M105 180 Q110 85 200 85 Q295 85 297 175 Q270 120 200 125 Q140 125 105 180 Z" fill="#1B181D"/>
+  <circle cx="165" cy="200" r="10" fill="#1B181D"/>
+  <circle cx="235" cy="200" r="10" fill="#1B181D"/>
+  <path d="M170 240 Q200 262 230 240" stroke="#1B181D" stroke-width="8" fill="none" stroke-linecap="round"/>
+  <path d="M150 300 L200 360 L250 300" fill="#FFFFFF"/>
+</svg>

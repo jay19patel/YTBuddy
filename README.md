@@ -63,10 +63,64 @@ Aliases live in `config/llm.toml` as defaults: `fast` (classification, niche det
 
 Today (the daily brief: analysis, trends, 5 ideas, a script) · Scripts (every script, daily and requested) · Ideas (backlog, plus a form for your own idea) · Insights (analytics, retention charts) · Trends · Publish (manual upload; fills title, description and tags from a script and can schedule it) · Jobs (runs, retries, dead letters, LLM cost, quota, health for the selected channel) · Settings (per channel: schedule, language, region, topics, voice; plus budget, sync, read-only LLM aliases).
 
+## Kinetic typography videos (`python -m pipeline`)
+
+Turns a Hinglish voice-over into a kinetic typography explainer: every spoken word appears on screen in sync, bold colour
+scenes, mock app windows, Fluent 3D stickers, your presenter character, 16:9 or 9:16. Python plans the video, Remotion
+(React) draws it, FFmpeg adds the voice, ducked music and SFX and normalises loudness to -14 LUFS.
+How it works: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#kinetic-video-pipeline).
+
+### Setup
+
+| Tool | Version | macOS | Linux (Debian/Ubuntu) | Windows |
+| --- | --- | --- | --- | --- |
+| Python | 3.12 | `brew install uv` | `curl -LsSf https://astral.sh/uv/install.sh \| sh` | `winget install astral-sh.uv` |
+| Node.js | 20 or 22 LTS (tested on 26) | `brew install node` | [nodesource](https://github.com/nodesource/distributions) or `nvm install 22` | `winget install OpenJS.NodeJS.LTS` |
+| FFmpeg | 6+ (libx264; libass only for `--simple`) | `brew install ffmpeg` | `sudo apt install ffmpeg` | `winget install Gyan.FFmpeg` |
+
+```bash
+uv sync                          # Python deps (add --extra media for faster-whisper transcription)
+cd renderer && npm ci && cd ..   # Remotion; it downloads its own headless Chrome on the first render
+# Linux render machines also need Chrome's libraries: npx remotion browser ensure (see remotion.dev/docs/miscellaneous/linux-dependencies)
+```
+
+Put your brand in [config/kinetic.yaml](config/kinetic.yaml): `brand.handle`, and your own `avatar` / `character`
+images in `assets/brand/` (the SVGs there are placeholders). Optional: `assets/sfx/{pop,whoosh,click,typing}.wav` and
+your own music file. On Windows run the commands below in PowerShell with `uv run python` in place of `python`.
+
+### Commands
+
+```bash
+# the full video: voice-over + storyboard (manual mode)
+python -m pipeline make --audio vo.wav --storyboard story.yaml --format 16x9 --out exports/
+# voice-over + script only: scenes, colours and stickers are planned automatically (--llm lets Claude pick them)
+python -m pipeline make --audio vo.wav --script script.txt --format 9x16 --music bed.mp3 --sfx
+#   --words words.json   skip transcription   --until 20   render only the first 20 s   --simple   old ASS renderer
+
+python -m pipeline demo --format 16x9         # the 90 s reference video with fake timings and a click track
+python -m pipeline stills --composition Demo  # docs/previews/*.png at 1, 4, 7, 12, 18 s
+python -m pipeline gen                        # after editing pipeline/schema.py or theme.py
+cd renderer && npm run studio                 # live preview of the Demo composition in the browser
+```
+
+Each run writes `<name>.mp4`, `<name>.words.json`, `<name>.timeline.json` and, in auto mode, `<name>.story.yaml`. Edit
+that storyboard and pass it back with `--storyboard` to fine-tune the automatic plan.
+
+### Script and storyboard
+
+Emphasis markers in a script or storyboard line: `*bold*`, `[highlight box]`, `~strike~`, `{accent colour}`,
+`!!serif reveal!!`; add a colour after a bar: `[edit|white]`, `{cheez|crimson}`. Colours are the palette names in
+[pipeline/theme.py](pipeline/theme.py) or `#RRGGBB`. A storyboard is a list of scenes, each with ordered `content`:
+text lines (`lead`, `hero`, `sub`, `caption`, `card`) are spoken and take their timing from the voice; everything
+else (`sticker`, `ui_window`, `tag_pill`, `comment_bubbles`, …) appears with the next line, or `at: "@word"`,
+`at: 1.5` (seconds into the scene), `at: "+0.4"`, until `until:`. `clear: true` starts a fresh text block.
+[demo/story.yaml](demo/story.yaml) uses every component.
+
 ## Development
 
 ```bash
 uv run pytest            # Redis-backed and Postgres tests run when Redis is up / TEST_POSTGRES_URL is set
+cd renderer && npx tsc --noEmit   # renderer typecheck
 uv run ruff check . && uv run ruff format --check . && uv run mypy
 ```
 

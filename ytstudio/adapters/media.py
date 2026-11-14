@@ -45,13 +45,18 @@ def _font_for(text: str, size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageF
 
 
 def _ffmpeg(*args: str, timeout: int = 3600) -> None:
-    p = subprocess.run(
-        ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", *args],
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-        check=False,
-    )
+    try:
+        p = subprocess.run(
+            ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", *args],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+    except FileNotFoundError as e:
+        raise PermanentError("ffmpeg is not installed or not on PATH") from e
+    except subprocess.TimeoutExpired as e:
+        raise PermanentError(f"ffmpeg did not finish within {timeout} s") from e
     if p.returncode:
         raise PermanentError(f"ffmpeg failed: {p.stderr.strip()[-500:]}")
 

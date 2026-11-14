@@ -1,0 +1,31 @@
+# Settings for the kinetic typography pipeline (python -m pipeline make). Paths are relative to the repo root;
+# brand images are relative to assets/.
+brand:
+  handle: "@njtechstudio"
+  avatar: brand/avatar.svg # replace with your own avatar (square PNG/SVG)
+  character: brand/character.svg # replace with your own full-body presenter (transparent PNG/SVG)
+
+fps: 30
+formats:
+  16x9: [1920, 1080]
+  9x16: [1080, 1920]
+
+transcribe:
+  model: small # faster-whisper model: tiny, base, small, medium, large-v3
+  language: hinglish # hinglish forces Roman-script output
+
+plan:
+  llm_model: anthropic/claude-sonnet-5-5 # only used with --llm; needs ANTHROPIC_API_KEY
+  min_scene_s: 3
+  max_scene_s: 8
+
+audio:
+  lufs: -14
+  true_peak: -1.5
+  music_db: -22 # music bed level before ducking
+  duck: true # music dips under the voice (sidechain compression)
+  sfx_db: -10
+
+video:
+  crf: 18
+  timeout_s: 3600

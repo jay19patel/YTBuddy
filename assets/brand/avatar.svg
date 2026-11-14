@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <!-- Placeholder avatar. Replace with your own (config/kinetic.yaml brand.avatar). -->
+  <rect width="200" height="200" fill="#DF5C1D"/>
+  <path d="M30 200 Q30 140 100 140 Q170 140 170 200 Z" fill="#2533F8"/>
+  <circle cx="100" cy="88" r="48" fill="#E8B48A"/>
+  <path d="M52 84 Q55 34 100 34 Q147 34 148 80 Q132 56 100 58 Q70 58 52 84 Z" fill="#1B181D"/>
+  <circle cx="83" cy="94" r="5" fill="#1B181D"/><circle cx="117" cy="94" r="5" fill="#1B181D"/>
+  <path d="M86 114 Q100 124 114 114" stroke="#1B181D" stroke-width="4" fill="none" stroke-linecap="round"/>
+</svg>

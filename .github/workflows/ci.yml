@@ -40,5 +40,10 @@ jobs:
         run: |
           uv export --frozen --no-dev --no-emit-project --format requirements-txt > req.txt
           uv run pip-audit -r req.txt --require-hashes --disable-pip
+      - uses: actions/setup-node@v4
+        with: {node-version: "22"}
+      - name: Renderer typecheck
+        working-directory: renderer
+        run: npm ci && npx tsc --noEmit
       - name: Compose file is valid
         run: docker compose --env-file .env.example config -q

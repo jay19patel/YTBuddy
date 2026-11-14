@@ -1,0 +1,144 @@
+# A 9:16 Short: how Python automates video creation (it explains this very pipeline).
+#   python -m pipeline voice --storyboard demo/python-short/story.yaml --out exports/python-short/vo.wav
+#   python -m pipeline make --audio exports/python-short/vo.wav --words exports/python-short/vo.words.json \
+#       --storyboard demo/python-short/story.yaml --format 9x16 --out exports/python-short
+scenes:
+  - bg: black
+    layout: center_bracket
+    content:
+      - hero: "har video {manually|crimson} edit karte ho?"
+      - sticker: clapper
+        at: "@manually"
+        x: 0.5
+        y: 0.18
+        size: 1.1
+      - card: "ghanton ka ~kaam~"
+        color: crimson
+      - card: "ab nahi."
+        color: blue
+        enter: right
+
+  - bg: orange
+    bg_word: python
+    content:
+      - lead: "ab yeh poora kaam"
+      - hero: "[python|white] karega."
+      - sub: "woh bhi sirf ek command se."
+      - sticker: laptop
+        at: "@python"
+        x: 0.62
+        y: 0.45
+        size: 1.4
+
+  - bg: blue
+    layout: text_plus_character
+    content:
+      - character: right
+      - tag_pill: "step 01"
+      - lead: "sabse pehle"
+      - hero: "apni script likho"
+      - sub: "aur *voice* generate karo."
+      - sticker: camera
+        at: "@voice"
+        x: 0.2
+        y: 0.3
+
+  - bg: beige
+    layout: text_plus_window
+    content:
+      - tag_pill: {label: "step 02", color: black, text_color: yellow}
+      - lead: "python har ek word ka"
+      - hero: "[timestamp] nikalta hai."
+      - ui_window: note
+        title: words.json
+        at: "@python"
+        items:
+          - {label: "# words.json", at: "@python"}
+          - {label: '{"word": "har", "start": 0.42}', at: "@har"}
+          - {label: '{"word": "ek", "start": 0.61}', at: "@ek"}
+          - {label: '{"word": "word", "start": 0.80}', at: "@word"}
+          - {label: '{"word": "timestamp", "start": 1.12}', at: "@timestamp"}
+      - sticker: stopwatch
+        at: "@timestamp"
+        x: 0.9
+        y: 0.1
+        size: 0.8
+
+  - bg: crimson
+    bg_word: plan
+    content:
+      - lead: "phir storyboard se"
+      - hero: "har scene ka {colour|yellow} aur layout"
+      - sub: "khud plan ho jaata hai."
+      - storyboard:
+          items:
+            - {label: scene 01, at: "@har"}
+            - {label: scene 02, at: "@colour"}
+            - {label: scene 03, at: "@layout"}
+            - {label: scene 04, at: "@plan"}
+        at: "@har"
+
+  - bg: charcoal
+    layout: text_plus_window
+    content:
+      - tag_pill: {label: "step 03", color: green, text_color: white}
+      - lead: "remotion"
+      - hero: "har frame ko {react|yellow} se banata hai."
+      - ui_window: tools
+        title: renderer
+        at: "@remotion"
+        items:
+          - {label: AnimatedWord, sub: word by word, at: "@har"}
+          - {label: Sticker, sub: 3D emoji, at: "@frame"}
+          - {label: MacWindow, sub: UI mockups, at: "@react"}
+          - {label: Transitions, sub: scene cuts, at: "@banata"}
+      - sticker: gear
+        at: "@react"
+        x: 0.9
+        y: 0.9
+        size: 0.8
+
+  - bg: blue
+    bg_word: ffmpeg
+    content:
+      - lead: "aur end mein"
+      - hero: "[ffmpeg] voice aur music"
+      - sub: "mix karke final video deta hai."
+      - timeline_cut: {blocks: 9, cuts: [2, 5]}
+        at: "@ffmpeg"
+      - sticker: film
+        at: "@final"
+        x: 0.75
+        y: 0.75
+
+  - bg: black
+    layout: center_bracket
+    transition: crossfade
+    content:
+      - typing: "python -m pipeline make"
+        at: "@sirf"
+      - lead: "sirf ek command"
+      - hero: "aur !!poori video!! ready."
+      - sticker: sparkles
+        at: "@poori"
+        x: 0.82
+        y: 0.8
+        size: 0.9
+
+  - bg: {kind: diagonal, color: beige, panel: blue}
+    bg_word: follow
+    layout: text_plus_window
+    content:
+      - lead: "aisi aur automation chahiye?"
+      - hero: "toh follow kar lo."
+      - button_state: follow
+        at: "@aisi"
+        tap_at: "@lo"
+
+  - bg: black
+    layout: outro
+    watermark: none
+    transition: crossfade
+    duration: 3.5
+    content:
+      - outro: "next video"
