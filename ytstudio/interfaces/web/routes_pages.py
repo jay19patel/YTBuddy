@@ -10,7 +10,8 @@ from fastapi.responses import JSONResponse, RedirectResponse, Response
 from ytstudio.container import get_container
 from ytstudio.domain.metrics import median_views
 from ytstudio.domain.models import AssetStatus, RetentionPoint, Video
-from ytstudio.interfaces.web.app import Page, asset_format, back, csrf, page, queries, render
+from ytstudio.domain.video import VOICES, script_language, spoken_text, voice_for, voices_for
+from ytstudio.interfaces.web.app import Page, asset_format, available_voices, back, csrf, page, queries, render
 from ytstudio.interfaces.web.routes_auth import cookie
 
 router = APIRouter()
@@ -50,6 +51,11 @@ def run_now(p: Page = Depends(csrf)) -> Response:
     return started("/today", get_container().scheduling.run_now(p.user.id, p.channel_id))
 
 
+def channel_language(channel_id: str) -> str:
+    with get_container().uow() as uow:
+        return str(uow.schedules.get(channel_id).language)
+
+
 def by_format(rows: list[dict[str, Any]], fmt: str) -> tuple[list[dict[str, Any]], dict[str, int]]:
     """Rows of one type, and how many of each type there are (for the Long videos / Shorts toggle)."""
     counts = {"long": 0, "short": 0}
@@ -77,7 +83,15 @@ def scripts(request: Request, p: Page = Depends(page)) -> Response:
     waiting = [i for i in q.assets(p.user.id, p.channel_id, ["idea"], status=status) if i["id"] not in scripted]
     both = sorted(scripts_ + waiting, key=lambda r: r["created_at"], reverse=True)  # scripts and ideas, newest first
     rows, counts = by_format(both, fmt)
-    return render(p, "scripts.html", scripts=rows, status=status, fmt=fmt, counts=counts)
+    return render(
+        p,
+        "scripts.html",
+        scripts=rows,
+        status=status,
+        fmt=fmt,
+        counts=counts,
+        channel_language=channel_language(p.channel_id),
+    )
 
 
 @router.get("/scripts/new")
@@ -85,17 +99,21 @@ def new_script_form(request: Request, p: Page = Depends(page)) -> Response:
     if not p.active:
         return render(p, "empty.html")
     fmt = "short" if request.query_params.get("format") == "short" else "long"
-    return render(p, "script_new.html", fmt=fmt, idea=None, run=None)
+    return render(p, "script_new.html", fmt=fmt, idea=None, run=None, lang=channel_language(p.channel_id))
 
 
 @router.post("/scripts/new")
 def new_script(
-    title: str = Form(""), details: str = Form(""), format: str = Form("long"), p: Page = Depends(csrf)
+    title: str = Form(""),
+    details: str = Form(""),
+    format: str = Form("long"),
+    language: str = Form(""),
+    p: Page = Depends(csrf),
 ) -> Response:
     """Your own idea straight to a script: saved as a manual idea (so the script has its package and SEO like any
     other), developed at once, and the page follows the run until the script opens."""
     c = get_container()
-    idea = c.review.add_idea(p.user.id, p.channel_id, title, details, format=format)
+    idea = c.review.add_idea(p.user.id, p.channel_id, title, details, format=format, language=language)
     assert idea.id is not None
     return started(f"/scripts/new/{idea.id}", c.review.develop(p.user.id, idea.id))
 
@@ -111,7 +129,8 @@ def new_script_progress(idea_id: int, request: Request, p: Page = Depends(page))
         return back(f"/assets/{script['id']}", msg if msg and msg != "started" else None)
     run_id = request.query_params.get("run")
     run = (q.run(p.user.id, int(run_id)) if run_id and run_id.isdigit() else None) or q.run_for_asset(p.user.id, idea)
-    return render(p, "script_new.html", fmt=asset_format(idea["data"]), idea=idea, run=run)
+    lang = script_language(idea["data"], channel_language(idea["channel_id"]))
+    return render(p, "script_new.html", fmt=asset_format(idea["data"]), idea=idea, run=run, lang=lang)
 
 
 @router.post("/scripts/{script_id}/video")
@@ -120,9 +139,9 @@ def make_video(script_id: int, voice: str = Form(""), p: Page = Depends(csrf)) -
 
 
 @router.post("/ideas/{idea_id}/develop")
-def develop(idea_id: int, p: Page = Depends(csrf)) -> Response:
+def develop(idea_id: int, language: str = Form(""), p: Page = Depends(csrf)) -> Response:
     """Write the script for an idea; the page follows the run and opens the script when it is ready."""
-    return started(f"/scripts/new/{idea_id}", get_container().review.develop(p.user.id, idea_id))
+    return started(f"/scripts/new/{idea_id}", get_container().review.develop(p.user.id, idea_id, language))
 
 
 def upload_context(p: Page, a: dict[str, Any]) -> dict[str, Any]:
@@ -167,12 +186,22 @@ def asset(request: Request, asset_id: int, p: Page = Depends(page)) -> Response:
     p.active = own  # opened from a link or bookmark of another channel: show it under its own channel
     developed = q.developed(p.user.id, a["channel_id"], a["id"]) if a["kind"] == "idea" else {}
     extra = upload_context(p, a) if a["kind"] == "script" else {}
+    default_lang = channel_language(a["channel_id"])
+    if a["kind"] == "script":  # the voices that fit the script's own words, and the one chosen when left on automatic
+        text = spoken_text(a["data"])
+        fitting = {v.id for v in voices_for(text)}
+        extra |= {
+            "script_voices": [v for v in available_voices() if v.id in fitting],
+            "auto_voice": next(v.label for v in VOICES if v.id == voice_for(text)),
+            "script_lang": script_language(a["data"], default_lang),
+        }
     run_id = request.query_params.get("run")
     resp = render(
         p,
         "asset.html",
         a=a,
         developed=developed,
+        channel_language=default_lang,
         run=(q.run(p.user.id, int(run_id)) if run_id and run_id.isdigit() else None) or q.run_for_asset(p.user.id, a),
         **extra,
     )
@@ -234,8 +263,10 @@ async def edit(request: Request, asset_id: int, p: Page = Depends(csrf)) -> Resp
 
 
 @router.post("/assets/{asset_id}/regenerate")
-def regenerate(asset_id: int, next: str = Form("/today"), p: Page = Depends(csrf)) -> Response:
-    result = get_container().review.regenerate(p.user.id, asset_id)
+def regenerate(
+    asset_id: int, next: str = Form("/today"), language: str = Form(""), p: Page = Depends(csrf)
+) -> Response:
+    result = get_container().review.regenerate(p.user.id, asset_id, language)
     return started(next if next.startswith("/") and not next.startswith("//") else "/today", result)
 
 

@@ -26,7 +26,7 @@ from ytstudio.domain.models import (
     idem_key,
 )
 from ytstudio.domain.schedule import local_day, next_run
-from ytstudio.domain.video import VOICES
+from ytstudio.domain.video import LANGUAGE_IDS, VOICES
 from ytstudio.ports import (
     Analytics,
     Clock,
@@ -433,7 +433,8 @@ class Review:
             uow.assets.update(a)
             uow.commit()
 
-    def regenerate(self, user_id: int, asset_id: int) -> StartResult:
+    def regenerate(self, user_id: int, asset_id: int, language: str = "") -> StartResult:
+        """Write the asset again. A script can be written again in another `language` (hi, en or hinglish)."""
         with self.uow() as uow:
             a = uow.assets.get(asset_id, user_id)
             seed = uow.runs.get(a.run_id).outputs if a.run_id else {}
@@ -444,12 +445,19 @@ class Review:
         step = "write_short_script" if a.kind == "script" and format_of(a.data) == "short" else REGEN_STEP[a.kind]
         inputs: dict[str, Any] = {"regenerate": True, "asset_id": a.id, "target_step": step, "seed_outputs": seed}
         if "idea" in a.data:
-            inputs["idea"] = a.data["idea"]
+            inputs["idea"] = a.data["idea"] | ({"language": language} if language in LANGUAGE_IDS else {})
         key = f"{a.channel_id}:regen:{a.id}:{int(self.clock.now().timestamp())}"
         return self.runner.start(user_id, a.channel_id, "regen", key, inputs, steps=[step, "save_section"])
 
     def add_idea(
-        self, user_id: int, channel_id: str, title: str, details: str = "", effort: str = "standard", format: str = ""
+        self,
+        user_id: int,
+        channel_id: str,
+        title: str,
+        details: str = "",
+        effort: str = "standard",
+        format: str = "",
+        language: str = "",
     ) -> Asset:
         """An idea you typed yourself, for this channel. Develop it into a script like any other idea."""
         title = " ".join(title.split())[:200]
@@ -467,6 +475,8 @@ class Review:
             "format": fmt,
             "source": "manual",
         }
+        if language in LANGUAGE_IDS:  # else the script follows the channel's language setting
+            idea["language"] = language
         with self.uow() as uow:
             uow.channels.get(channel_id, user_id)  # owner check
             added = uow.assets.add(
@@ -487,14 +497,16 @@ class Review:
         key = f"{a.channel_id}:video:{a.id}:{int(self.clock.now().timestamp())}"
         return self.runner.start(user_id, a.channel_id, "script_video", key, inputs)
 
-    def develop(self, user_id: int, idea_asset_id: int) -> StartResult:
+    def develop(self, user_id: int, idea_asset_id: int, language: str = "") -> StartResult:
+        """Write the script (and for a long video its package and SEO). `language` overrides the idea's own."""
         with self.uow() as uow:
             a = uow.assets.get(idea_asset_id, user_id)
         if a.kind != "idea":
             raise PermanentError("only ideas can be developed")
         pipeline = "develop_short" if format_of(a.data) == "short" else "develop"
+        idea = a.data | ({"language": language} if language in LANGUAGE_IDS else {})
         return self.runner.start(
-            user_id, a.channel_id, pipeline, f"{a.channel_id}:develop:{a.id}", {"idea": a.data, "idea_asset_id": a.id}
+            user_id, a.channel_id, pipeline, f"{a.channel_id}:develop:{a.id}", {"idea": idea, "idea_asset_id": a.id}
         )
 
 

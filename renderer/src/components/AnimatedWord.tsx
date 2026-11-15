@@ -2,7 +2,7 @@ import {interpolateColors, useCurrentFrame} from 'remotion';
 import {BOX_PAD_EM} from '../fit';
 import {interp, wordIn} from '../motion';
 import {useScene} from '../SceneContext';
-import {colorOf, inkOn, SANS, SERIF, THEME, useUnits} from '../theme';
+import {colorOf, inkOn, isDevanagari, SANS, SERIF, THEME, useUnits} from '../theme';
 import type {Word} from '../types.gen';
 import {HighlightBox} from './HighlightBox';
 import {SerifReveal} from './SerifReveal';
@@ -24,7 +24,14 @@ export const AnimatedWord: React.FC<{
 	const {d} = useUnits();
 	const {palette, accent} = useScene();
 	const t = frame - at;
-	const base: React.CSSProperties = {display: 'inline-block', position: 'relative', whiteSpace: 'pre', fontWeight: weight};
+	// negative tracking would crush Devanagari vowel signs into the letters: Hindi words keep normal spacing
+	const base: React.CSSProperties = {
+		display: 'inline-block',
+		position: 'relative',
+		whiteSpace: 'pre',
+		fontWeight: weight,
+		letterSpacing: isDevanagari(word.text) ? '0' : undefined,
+	};
 
 	if (t < 0) {
 		const ghost = ghostFrom !== null && frame >= ghostFrom;

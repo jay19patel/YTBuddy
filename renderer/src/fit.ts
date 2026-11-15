@@ -1,5 +1,5 @@
 import {measureText} from '@remotion/layout-utils';
-import {SANS, SERIF, THEME} from './theme';
+import {isDevanagari, lineHeightOf, SANS, SERIF, THEME} from './theme';
 import type {Word} from './types.gen';
 
 const T = THEME.type;
@@ -19,7 +19,7 @@ const wordWidth = (w: Word, size: number, weight: number, tracking: string): num
 		fontFamily: serif ? SERIF : SANS,
 		fontSize: fs,
 		fontWeight: serif ? 900 : w.style === 'bold' || w.style === 'highlight' ? T.boldWeight : weight,
-		letterSpacing: tracking,
+		letterSpacing: isDevanagari(w.text) ? '0' : tracking,
 		additionalStyles: serif ? {fontStyle: 'italic'} : {},
 	});
 	return m.width + (w.style === 'highlight' ? 2 * BOX_PAD_EM * fs : 0);
@@ -41,7 +41,7 @@ export const wrap = (words: Word[], size: number, weight: number, tracking: stri
 			x = ww;
 		} else x = next;
 	}
-	return {lines, widest, height: lines * tall * T.lineHeight, width: lines === 1 ? x : maxWidth};
+	return {lines, widest, height: lines * tall * lineHeightOf(words), width: lines === 1 ? x : maxWidth};
 };
 
 const heightAt = (m: Measurable, k: number, maxWidth: number): number | null => {

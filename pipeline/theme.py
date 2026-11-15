@@ -29,7 +29,12 @@ EMOJI: dict[str, str] = {
 THEME: dict[str, object] = {
     "palette": PALETTE,
     "emoji": EMOJI,
-    "fonts": {"sans": "Inter Tight", "serif": "Playfair Display", "display": "Bebas Neue"},
+    "fonts": {
+        "sans": "Inter Tight",
+        "serif": "Playfair Display",
+        "display": "Bebas Neue",
+        "devanagari": "Noto Sans Devanagari",  # Hindi scripts: the Latin fonts have no Devanagari letters
+    },
     # sizes are fractions of min(width, height), so 16:9 and 9:16 get the same type size
     "type": {
         "lead": {"size": 0.034, "weight": 400, "tracking": "-0.03em"},
@@ -40,6 +45,7 @@ THEME: dict[str, object] = {
         "boldWeight": 800,
         "serifScale": 1.25,
         "lineHeight": 1.06,
+        "lineHeightDevanagari": 1.4,  # vowel signs above and below the line need room
         "bgWord": 0.55,
         "bgWordOpacity": 0.15,
         "watermark": 0.026,

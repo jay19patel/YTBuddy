@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from ytstudio.domain.errors import DomainError, PermanentError, TransientError
-from ytstudio.domain.video import default_voice, voice_language
+from ytstudio.domain.video import CHATTERBOX_LANGUAGE, default_voice, voice_language
 
 log = logging.getLogger(__name__)
 
@@ -215,17 +215,21 @@ class ChatterboxNarrator:
 
 class VoiceNarrator:
     """The voice picked on the form: Chatterbox when asked for and installed, otherwise the Microsoft voice; if either
-    cannot be used, the offline Piper voice of the same language."""
+    cannot be used, the offline Piper voice of the same language. A Chatterbox voice that fails falls back to the
+    Microsoft voice first: Piper sounds robotic."""
 
     def __init__(self, online: EdgeNarrator, offline: PiperNarrator, chatterbox: ChatterboxNarrator | None = None):
         self.online, self.offline, self.chatterbox = online, offline, chatterbox
 
     def speak(self, lines: list[tuple[str, float]], voice: str, out: Path) -> tuple[list[dict[str, Any]], str]:
+        if voice.startswith("chatterbox"):
+            if self.chatterbox:
+                try:
+                    return self.chatterbox.speak(lines, CHATTERBOX_LANGUAGE[voice], out), "Chatterbox (open source)"
+                except DomainError as e:
+                    log.warning("Chatterbox failed, using the Microsoft voice: %s", e)
+            voice = default_voice(voice_language(voice))  # not usable: the Microsoft voice of that language, not Piper
         try:
-            if voice.startswith("chatterbox"):
-                if self.chatterbox:
-                    return self.chatterbox.speak(lines, voice_language(voice), out), "Chatterbox (open source)"
-                voice = default_voice(voice_language(voice))  # not installed: the Microsoft voice of that language
             return self.online.speak(lines, voice, out), "Microsoft neural voice"
         except DomainError as e:
             log.warning("online voice failed, using the offline voice: %s", e)

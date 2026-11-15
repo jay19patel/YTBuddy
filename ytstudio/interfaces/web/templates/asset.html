@@ -10,7 +10,7 @@
 
   {% if a.kind == "idea" %}
     {% set fmt = d | asset_format %}
-    <div class="chips">{{ m.chips(fmt, d | is_manual) }}</div>
+    <div class="chips">{{ m.chips(fmt, d | is_manual, d | script_lang(channel_language)) }}</div>
     <dl class="kv">
       <dt>Angle</dt><dd>{{ d.angle }}</dd>
       <dt>Why now</dt><dd>{{ d.why_now }}{% for r in d.outlier_refs %} <a href="https://youtu.be/{{ r }}" target="_blank" rel="noopener">[{{ loop.index }}]</a>{% endfor %}</dd>
@@ -32,10 +32,10 @@
         <h3>Next step: write the script</h3>
         {% if fmt == "short" %}
         <p class="muted">This writes a Shorts script under a minute long, with a title and description. It takes a few seconds.</p>
-        <div class="actions">{{ m.post("/ideas/" ~ a.id ~ "/develop", "Write the Short script", "btn small") }}</div>
+        {{ m.write_script(a.id, "Write the Short script", "btn small", d | script_lang(channel_language)) }}
         {% else %}
         <p class="muted">This writes the script, three title options with thumbnail text, and the SEO text for this idea. It takes about a minute.</p>
-        <div class="actions">{{ m.post("/ideas/" ~ a.id ~ "/develop", "Write script, titles and SEO", "btn small") }}</div>
+        {{ m.write_script(a.id, "Write script, titles and SEO", "btn small", d | script_lang(channel_language)) }}
         {% endif %}
       </div>
     {% endif %}
@@ -49,7 +49,7 @@
     </details>
 
   {% elif a.kind == "script" %}
-    <div class="chips">{{ m.chips(d | asset_format, d | is_manual) }}</div>
+    <div class="chips">{{ m.chips(d | asset_format, d | is_manual, script_lang) }}</div>
     <div class="video-box">
       {% if d.video_key %}
         <video controls preload="metadata" class="{{ 'tall' if (d | asset_format) == 'short' else 'wide' }}" src="/files/asset/{{ a.id }}/video?v={{ d.video_made_at }}"></video>
@@ -61,7 +61,7 @@
       {% endif %}
       <form method="post" action="/scripts/{{ a.id }}/video" class="actions">
         <input type="hidden" name="csrf" value="{{ csrf }}">
-        <select name="voice" aria-label="Voice"><option value="">Voice: automatic</option>{% for v in voices() %}<option value="{{ v.id }}">{{ v.label }}</option>{% endfor %}</select>
+        <select name="voice" aria-label="Voice"><option value="">Voice: automatic ({{ auto_voice }})</option>{% for v in script_voices %}<option value="{{ v.id }}"{% if v.id == d.video_voice %} selected{% endif %}>{{ v.label }}</option>{% endfor %}</select>
         <button class="btn" type="submit" data-busy="Starting…"><i data-lucide="clapperboard"></i>{{ "Make the video again" if d.video_key else "Generate video" }}</button>
       </form>
       {% if not d.video_key and flags.publish %}<p class="hint">After the video is made, the Upload to YouTube button appears here.</p>{% endif %}
@@ -69,7 +69,7 @@
         {% if d.youtube_id %}{{ m.uploaded_box(d) }}
         {% elif flags.publish and prefill %}{{ m.upload_form(a.id, prefill.title, prefill.description, prefill.tags, tz, (d | asset_format) == "short", "/assets/" ~ a.id) }}{% endif %}
       {% endif %}
-      <p class="hint">A natural neural voice reads the script; the video is planned from it automatically: bold colour scenes, every word on screen the moment it is said, 3D stickers and your brand ({{ "vertical, for a Short" if (d | asset_format) == "short" else "widescreen, for a long video" }}). Takes a minute or two. {% if d.video_engine %}Last voice: {{ d.video_engine }}. {% endif %}Nothing is uploaded.</p>
+      <p class="hint">A natural neural voice reads the script; the voices listed match its language ({{ script_lang | language_name }}), and automatic picks the best one. The video is planned from it automatically: bold colour scenes, every word on screen the moment it is said, 3D stickers and your brand ({{ "vertical, for a Short" if (d | asset_format) == "short" else "widescreen, for a long video" }}). Takes a minute or two. {% if d.video_engine %}Last voice: {{ d.video_engine }}. {% endif %}Nothing is uploaded.</p>
     </div>
     {% if d.format == "short" %}
       <h3>Title <button class="copy" type="button" data-copy="{{ d.title }}">Copy</button></h3><p>{{ d.title }}</p>

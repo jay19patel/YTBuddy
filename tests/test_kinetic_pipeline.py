@@ -224,7 +224,8 @@ def test_auto_storyboard_covers_every_word_and_builds_a_valid_timeline():
     s = plan.auto_story(tokens, words, 3, 8, character=True)
     assert [t.text for t in plan.script_of(s)] == [t.text for t in tokens]  # every word, in order
     assert any(t.style == "highlight" for t in plan.script_of(s))  # the key word of a hero line is boxed
-    for sc in s.scenes:
+    assert s.scenes[-1].layout == "outro"  # every video ends on the outro
+    for sc in s.scenes[:-1]:
         assert sc.layout == "center_bracket" or any("sticker" in e for e in sc.content)
         assert sc.bg_word is None or len(sc.bg_word) <= 7  # short enough to read when huge
     stickers = [e["sticker"] for sc in s.scenes for e in sc.content if "sticker" in e]
@@ -305,3 +306,96 @@ def test_config_loads_and_rejects_typos(tmp_path):
     with pytest.raises(ValidationError):
         load(bad)
     assert load(tmp_path / "missing.yaml").fps == 30
+
+
+def test_the_last_line_asking_to_follow_gets_the_follow_button_then_the_outro():
+    words = evenly("yeh tha aaj ka trick. aisi aur videos ke liye follow kar lo.")
+    s = plan.auto_story([markup.Token(w.word) for w in words], words, 3, 8, character=False)
+    last = s.scenes[-2]
+    card = next(e for e in last.content if "button_state" in e)
+    assert card["button_state"] == "follow" and last.layout == "text_plus_window"
+    t = plan.plan(s, words, video_info(Settings(), "16x9"), words[-1].end + 1)
+    tap = next(e for e in t.scenes[-2].elements if e.type == "button_state").props.tap_at
+    assert tap == next(w.start for w in words if w.word == "follow")  # tapped as "follow" is said
+    assert t.scenes[-1].layout == "outro" and t.scenes[-1].end - t.scenes[-1].start > 3.4
+
+
+def test_an_llm_storyboard_is_checked_against_the_script_and_repaired():
+    sentences = ["pehle fastapi install karo.", "phir main.py likho.", "follow kar lo."]
+    raw = [
+        {
+            "sentences": [0],
+            "layout": "text_plus_window",
+            "bg": "blue",
+            "content": [
+                {"hero": "pehle [fastapi] install karo."},
+                {"typing": "pip install fastapi", "at": "@install"},
+                {"sticker": "unicorn"},  # no such sticker: dropped
+                {"sticker": "fire", "at": "@nowhere"},  # not said in this scene: dropped
+                {"lead": "x", "hero": "y"},  # two kinds in one entry: dropped
+            ],
+        },
+        {"sentences": [1], "layout": "nonsense", "content": [{"hero": "phir app.py likho."}]},  # a word changed
+        {"sentences": [2], "layout": "left_text", "content": [{"hero": "follow kar lo."}]},
+    ]
+    info = video_info(Settings(), "16x9")
+    s = plan.from_sentences(raw, sentences, info, ROOT / "assets")
+    assert s.scenes[0].content == [
+        {"hero": "pehle [fastapi] install karo."},
+        {"typing": "pip install fastapi", "at": "@install"},
+    ]
+    assert s.scenes[1].content == [{"hero": "phir main.py likho."}] and s.scenes[1].layout == "left_text"
+    assert any("button_state" in e for e in s.scenes[2].content) and s.scenes[-1].layout == "outro"
+    words = evenly(" ".join(sentences))
+    t = plan.plan(s, align([x.text for x in plan.script_of(s)], words), info, words[-1].end + 1)
+    assert not plan.missing_assets(t, ROOT / "assets")
+    with pytest.raises(ValueError, match="every sentence"):
+        plan.from_sentences(raw[:2], sentences, info, ROOT / "assets")
+
+
+def test_llm_lines_that_skip_or_reword_words_still_say_every_word_with_their_emphasis():
+    sentences = ["Step 1, sabse pehle install karo.", "Terminal kholo aur likho pip install fastapi.", "Bas, ho gaya."]
+    raw = [
+        {
+            "sentences": [0, 1, 2],
+            "layout": "text_plus_window",
+            "content": [
+                {"tag_pill": {"label": "step 01"}},
+                {"hero": "Sabse pehle [install] karo."},  # "Step 1," left out
+                {"ui_window": "typing", "items": [{"label": "pip install fastapi", "at": "@terminal"}]},
+                {"clear": True},
+                {"sub": "Terminal kholo."},  # shortened
+                {"sticker": {"name": "check", "at": "@gaya", "x": 0.8, "y": 0.8}},
+                {"hero": "Bas, ho !!gaya.!!", "size": 0.8, "color": "nope"},  # settings a line does not have
+            ],
+        }
+    ]
+    s = plan.from_sentences(raw, sentences, video_info(Settings(), "16x9"), ROOT / "assets")
+    c = s.scenes[0].content
+    assert [t.text for t in plan.script_of(s)] == " ".join(sentences).split()  # every word, in order
+    assert c[1] == {"hero": "Step 1, sabse pehle [install] karo."}
+    assert c[2] == {"typing": "pip install fastapi", "at": "@terminal"}
+    assert c[3] == {"sub": "Terminal kholo aur likho pip install fastapi.", "clear": True}
+    assert c[4] == {"sticker": "check", "at": "@gaya", "x": 0.8, "y": 0.8} and c[5] == {"hero": "Bas, ho !!gaya.!!"}
+
+
+def test_a_line_swollen_by_left_out_words_is_split_so_the_window_comes_in_on_time():
+    sentences = ["Bas, setup ho gaya.", "Step 2, ek nayi file banao, main.py.", "Usme FastAPI import karo."]
+    raw = [
+        {
+            "sentences": [0, 1, 2],
+            "layout": "text_plus_window",
+            "content": [
+                {"hero": "Ek nayi file banao, main.py."},
+                {"ui_window": "note", "title": "main.py", "items": [{"label": "from fastapi import FastAPI"}]},
+                {"hero": "Usme FastAPI import karo.", "clear": True},
+            ],
+        }
+    ]
+    s = plan.from_sentences(raw, sentences, video_info(Settings(), "16x9"), ROOT / "assets")
+    c = s.scenes[0].content
+    assert c[0] == {"hero": "Bas, setup ho gaya."}
+    assert "ui_window" in c[1]  # written after its line, it comes in with that line
+    assert c[2] == {"hero": "Step 2, ek nayi file banao, main.py.", "clear": True}
+    assert c[3] == {"hero": "Usme FastAPI import karo.", "clear": True}
+    assert [t.text for t in plan.script_of(s)] == " ".join(sentences).split()

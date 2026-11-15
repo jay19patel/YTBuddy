@@ -50,7 +50,8 @@ export const THEME = {
   "fonts": {
     "sans": "Inter Tight",
     "serif": "Playfair Display",
-    "display": "Bebas Neue"
+    "display": "Bebas Neue",
+    "devanagari": "Noto Sans Devanagari"
   },
   "type": {
     "lead": {
@@ -81,6 +82,7 @@ export const THEME = {
     "boldWeight": 800,
     "serifScale": 1.25,
     "lineHeight": 1.06,
+    "lineHeightDevanagari": 1.4,
     "bgWord": 0.55,
     "bgWordOpacity": 0.15,
     "watermark": 0.026,

@@ -1,5 +1,5 @@
 import {useScene, useRel} from '../SceneContext';
-import {colorOf, SANS, THEME, useUnits} from '../theme';
+import {colorOf, lineHeightOf, SANS, THEME, useUnits} from '../theme';
 import type {TextLineProps, Word} from '../types.gen';
 import {WORD_GAP_EM} from '../fit';
 import {AnimatedWord} from './AnimatedWord';
@@ -33,7 +33,7 @@ export const TextBlock: React.FC<{props: TextLineProps; k: number}> = ({props, k
 	const secondary = props.role === 'lead' || props.role === 'sub';
 	const color = props.color ? colorOf(props.color, palette) : secondary ? muted : ink;
 	return (
-		<div style={{fontFamily: SANS, fontSize: role.size * u * k, letterSpacing: role.tracking, lineHeight: THEME.type.lineHeight}}>
+		<div style={{fontFamily: SANS, fontSize: role.size * u * k, letterSpacing: role.tracking, lineHeight: lineHeightOf(props.words)}}>
 			<Words words={props.words} weight={role.weight} color={color} bg={textBg} align={align} />
 		</div>
 	);

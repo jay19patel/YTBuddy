@@ -1,6 +1,6 @@
 """Structured LLM outputs. Bump VERSION when a schema changes: it is part of the LLM cache key."""
 
-from typing import ClassVar, Literal
+from typing import Any, ClassVar, Literal
 
 from pydantic import BaseModel, Field
 
@@ -74,6 +74,20 @@ class ShortScriptOut(BaseModel):
     title: str = Field(max_length=100)
     description: str = Field(description="Two short lines, no hashtags")
     estimated_seconds: int = Field(description="Spoken length, at most 58")
+
+
+class StoryboardScene(BaseModel):
+    sentences: list[int] = Field(min_length=1, description="Numbers of the sentences this scene says, in order")
+    bg: str | dict[str, str] = Field("black", description='A palette name, or {"kind": "diagonal", "color", "panel"}')
+    layout: Literal["left_text", "center_bracket", "text_plus_window", "text_plus_character", "split_panel"]
+    bg_word: str | None = Field(None, description="One short keyword drawn huge behind the text")
+    transition: Literal["cut", "diagonal_wipe", "split_slide", "crossfade"] = "cut"
+    content: list[dict[str, Any]] = Field(min_length=1, description="Storyboard entries: spoken lines and visuals")
+
+
+class StoryboardOut(BaseModel):
+    VERSION: ClassVar[str] = "1"
+    scenes: list[StoryboardScene] = Field(min_length=1)
 
 
 class PackagePair(BaseModel):

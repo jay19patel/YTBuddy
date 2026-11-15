@@ -7,6 +7,12 @@ export type Element = Timeline['scenes'][number]['elements'][number];
 export type Palette = Record<string, string>;
 export type Rect = {x: number; y: number; w: number; h: number};
 
+export const isDevanagari = (text: string): boolean => /[\u0900-\u097F]/.test(text);
+
+/** Line height for a block of words: Hindi needs more room than the tight Latin setting. */
+export const lineHeightOf = (words: {text: string}[]): number =>
+	words.some((w) => isDevanagari(w.text)) ? THEME.type.lineHeightDevanagari : THEME.type.lineHeight;
+
 export const colorOf = (c: string | null | undefined, palette: Palette, fallback = '#FFFFFF'): string =>
 	!c ? fallback : c.startsWith('#') ? c : (palette[c] ?? fallback);
 
@@ -29,6 +35,7 @@ export const useUnits = () => {
 	return {width, height, fps, u, tu, vertical, d: (frames: number) => Math.max(1, Math.round((frames * fps) / 30))};
 };
 
-export const SANS = `'${THEME.fonts.sans}', sans-serif`;
-export const SERIF = `'${THEME.fonts.serif}', serif`;
+// Devanagari letters come from Noto Sans Devanagari (Inter Tight and Playfair have none), Latin ones from the main font
+export const SANS = `'${THEME.fonts.sans}', '${THEME.fonts.devanagari}', sans-serif`;
+export const SERIF = `'${THEME.fonts.serif}', '${THEME.fonts.devanagari}', serif`;
 export const DISPLAY = `'${THEME.fonts.display}', sans-serif`;

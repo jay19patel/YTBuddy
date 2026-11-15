@@ -28,12 +28,18 @@ LANG_NAMES = {
 }
 
 
+def language_of(ctx: Context) -> str:
+    """The language this run writes in: the one chosen for the idea, otherwise the channel's setting."""
+    chosen = (ctx.inputs.get("idea") or {}).get("language")
+    return str(chosen) if chosen in LANG_NAMES else ctx.schedule.language
+
+
 def channel_vars(ctx: Context) -> dict[str, Any]:
     s = ctx.schedule
     return {
         "channel": ctx.channel.title,
         "niche": s.niche or "not set",
-        "language": LANG_NAMES.get(s.language, s.language),
+        "language": LANG_NAMES.get(language_of(ctx), language_of(ctx)),
         "region": s.region,
         "target_minutes": s.target_minutes,
         "voice": ctx.schedule.voice_md.strip(),
@@ -255,7 +261,14 @@ def long_script(step: LLMStep, ctx: Context, idea: dict[str, Any]) -> dict[str, 
     scored = step.deps.hooks.score(hooks)
     best = scored[0]
     script = step.ask(ctx, "smart", "script", {"idea": idea, "hook": best["hook"]}, ScriptOut)
-    return {"idea": idea, "format": "long", "hooks": scored, "hook": best, "script": dump(script)}
+    return {
+        "idea": idea,
+        "format": "long",
+        "language": language_of(ctx),
+        "hooks": scored,
+        "hook": best,
+        "script": dump(script),
+    }
 
 
 def short_script(step: LLMStep, ctx: Context, idea: dict[str, Any]) -> dict[str, Any]:
@@ -270,6 +283,7 @@ def short_script(step: LLMStep, ctx: Context, idea: dict[str, Any]) -> dict[str,
     return {
         "idea": idea,
         "format": "short",
+        "language": language_of(ctx),
         "hooks": scored,
         "hook": scored[0],
         "script": script,

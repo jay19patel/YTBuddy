@@ -27,7 +27,7 @@ def auto_story(cfg: Settings, tokens: list[markup.Token], words: list[TimedWord]
     if llm:
         try:
             names = sorted(p.stem for p in (cfg.assets / "stickers").glob("*.png"))
-            return plan.llm_story(tokens, words, cfg.plan.llm_model, names)
+            return plan.finish(plan.llm_story(tokens, words, cfg.plan.llm_model, names))
         except Exception as e:  # any bad reply falls back to the rules; the reason is logged
             log.warning("LLM plan rejected (%s); using the rule-based plan", e)
     return plan.auto_story(tokens, words, cfg.plan.min_scene_s, cfg.plan.max_scene_s, bool(cfg.brand.character))

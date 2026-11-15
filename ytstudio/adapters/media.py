@@ -5,6 +5,7 @@ highlighted) and overlaid with FFmpeg's core `overlay` filter. That needs no lib
 with any FFmpeg build.
 """
 
+import logging
 import os
 import shutil
 import subprocess
@@ -18,6 +19,8 @@ from PIL import Image, ImageDraw, ImageFont
 
 from ytstudio.domain.errors import PermanentError
 from ytstudio.domain.models import Cue
+
+log = logging.getLogger(__name__)
 
 W, H = 1080, 1920
 SUB_Y, SUB_H = 1180, 520  # caption strip, lower third
@@ -185,9 +188,17 @@ class FFmpegMediaProcessor:
         _ffmpeg("-i", str(wav), "-af", chain, "-ar", "44100", "-c:a", "libmp3lame", "-q:a", "2", str(part), timeout=600)
         os.replace(part, out)
 
-    def render_script_video(self, units: list[dict[str, Any]], audio: Path, vertical: bool, out: Path) -> None:
-        """Kinetic typography (pipeline/ + renderer/): scenes, colours and stickers planned from the words, every word
-        on screen when it is said, 9:16 for a Short, 16:9 otherwise."""
+    def render_script_video(
+        self,
+        units: list[dict[str, Any]],
+        audio: Path,
+        vertical: bool,
+        out: Path,
+        story: list[dict[str, Any]] | None = None,
+    ) -> None:
+        """Kinetic typography (pipeline/ + renderer/): every word on screen when it is said, 9:16 for a Short, 16:9
+        otherwise. `story` is the LLM's storyboard (scenes naming the sentences of `units` they say); when it is
+        missing or unusable the scenes, colours and stickers are planned from the words by rule."""
         from pipeline import markup, plan, video
         from pipeline.render import RenderError
         from pipeline.settings import load
@@ -206,11 +217,18 @@ class FFmpegMediaProcessor:
         if not words:
             raise PermanentError("There are no words to show in the video.")
         cfg = load()
+        info = video.video_info(cfg, "9x16" if vertical else "16x9")
+        planned = None
+        if story:
+            try:
+                planned = plan.from_sentences(story, [str(u["text"]) for u in units], info, cfg.assets)
+                tokens = plan.script_of(planned)
+                words = align([t.text for t in tokens], words)
+            except ValueError as e:
+                log.warning("storyboard not usable (%s); the rule-based plan is used", e)
+                planned = None
         try:
-            story = video.auto_story(cfg, tokens, words)
-            timeline = plan.plan(
-                story, words, video.video_info(cfg, "9x16" if vertical else "16x9"), self.duration(audio)
-            )
+            timeline = plan.plan(planned or video.auto_story(cfg, tokens, words), words, info, self.duration(audio))
             out.parent.mkdir(parents=True, exist_ok=True)
             with tempfile.TemporaryDirectory() as d:
                 part = out.with_name(f".{out.name}.part.mp4")

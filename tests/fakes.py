@@ -200,6 +200,7 @@ class FakeMedia:
     def __init__(self) -> None:
         self.renders: list[tuple[float, float]] = []
         self.videos: list[tuple[int, bool, str]] = []
+        self.stories: list[list[dict[str, Any]] | None] = []
 
     def duration(self, path: Path) -> float:
         return 600.0
@@ -214,8 +215,16 @@ class FakeMedia:
     def encode_audio(self, wav: Path, out: Path) -> None:
         out.write_bytes(b"mp3")
 
-    def render_script_video(self, units: list[dict[str, Any]], audio: Path, vertical: bool, out: Path) -> None:
+    def render_script_video(
+        self,
+        units: list[dict[str, Any]],
+        audio: Path,
+        vertical: bool,
+        out: Path,
+        story: list[dict[str, Any]] | None = None,
+    ) -> None:
         self.videos.append((len(units), vertical))
+        self.stories.append(story)
         out.write_bytes(b"mp4")
 
 
@@ -242,6 +251,27 @@ class FakeTranscriber:
 def transcript(n: int = 60) -> list[Cue]:
     """A 10-minute talk: one 10 s sentence per cue."""
     return [Cue(i * 10.0, i * 10.0 + 9.5, f"Point number {i} is about saving money on rent.") for i in range(n)]
+
+
+def short_script_in(language: str) -> dict[str, Any]:
+    """The Short the fake model writes, in the language the prompt asks for."""
+    if language.startswith("Hindi (Devanagari"):
+        lines = ["किराया ज्यादा मत दो, यह करो।", "हर महीने रसीद माँगो।", "इससे मेरे बारह हजार बचे।"]
+    elif language.startswith("Hinglish"):
+        lines = ["Rent zyada mat do, yeh karo.", "Har mahine receipt maango.", "Isse mere barah hazaar bache."]
+    else:
+        lines = ["Stop overpaying rent, do this instead.", "Ask for the receipts.", "That saved me twelve thousand."]
+    return {
+        "hook": lines[0],
+        "sections": [
+            {"heading": "Hook", "spoken": lines[0], "beat": "hook"},
+            {"heading": "Point", "spoken": lines[1], "beat": "body"},
+            {"heading": "Payoff", "spoken": lines[2], "beat": "payoff"},
+        ],
+        "title": "Stop overpaying rent",
+        "description": "One trick that cut my rent.\nTry it this month.",
+        "estimated_seconds": 35,
+    }
 
 
 def llm_responses() -> dict[str, Any]:
@@ -280,16 +310,12 @@ def llm_responses() -> dict[str, Any]:
                 {"heading": "Payoff", "spoken": "Do this.", "beat": "payoff"},
             ],
         },
-        "short_script": {
-            "hook": "Stop overpaying rent, do this instead.",
-            "sections": [
-                {"heading": "Hook", "spoken": "Stop overpaying rent, do this instead.", "beat": "hook"},
-                {"heading": "Point", "spoken": "Ask for the receipts.", "beat": "body"},
-                {"heading": "Payoff", "spoken": "That saved me twelve thousand.", "beat": "payoff"},
-            ],
-            "title": "Stop overpaying rent",
-            "description": "One trick that cut my rent.\nTry it this month.",
-            "estimated_seconds": 35,
+        "short_script": lambda req: short_script_in(str(req.variables["language"])),
+        "storyboard": lambda req: {
+            "scenes": [
+                {"sentences": [r["n"]], "layout": "left_text", "content": [{"hero": r["text"]}, {"sticker": "fire"}]}
+                for r in req.variables["sentences"]
+            ]
         },
         "package": {
             "pairs": [

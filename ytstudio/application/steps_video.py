@@ -1,17 +1,23 @@
 """Script to video: a voice-over and a kinetic typography video timed to it. Nothing here is published."""
 
+import logging
 import re
 import tempfile
 from pathlib import Path
 from typing import Any
 
 from ytstudio.application.pipeline import Context, Step, register
+from ytstudio.application.schemas import StoryboardOut
+from ytstudio.application.steps_daily import LLMStep
 from ytstudio.domain.errors import PermanentError
 from ytstudio.domain.models import Asset, Queue, format_of
-from ytstudio.domain.video import default_voice
+from ytstudio.domain.video import voice_for
 
 SENTENCE_END = re.compile(r"(?<=[.!?।])\s+|\n+")
 PAUSE_SENTENCE, PAUSE_SECTION = 0.28, 0.7  # a human reader breathes between thoughts
+PLAN_CHUNK = 30  # sentences per storyboard request, so a long video's plan fits in one reply each
+
+log = logging.getLogger(__name__)
 
 
 def spoken_lines(sections: list[dict[str, Any]]) -> list[tuple[str, float]]:
@@ -35,6 +41,41 @@ def load_script(step: Step, ctx: Context) -> Asset:
 
 
 @register
+class PlanStoryboard(LLMStep):
+    """The LLM designs the video scene by scene: colours, layouts, code windows, checklists, stickers and the follow
+    button. Its plan is checked against the script when the video is drawn; any failure here means the rule-based plan
+    is used instead, so the video is never lost to it."""
+
+    name = "plan_storyboard"
+    critical = False
+
+    def run(self, ctx: Context) -> dict[str, Any]:
+        a = load_script(self, ctx)
+        sections = a.data.get("script", {}).get("sections", [])
+        chunks: list[list[dict[str, Any]]] = []
+        n = 0  # sentences are numbered as the narrator splits them, across the whole script
+        for sec in sections:  # whole sections per request, up to PLAN_CHUNK sentences
+            rows = [
+                {"n": n + i, "beat": sec.get("beat", ""), "text": t} for i, (t, _) in enumerate(spoken_lines([sec]))
+            ]
+            n += len(rows)
+            if rows and (not chunks or len(chunks[-1]) + len(rows) > PLAN_CHUNK):
+                chunks.append([])
+            if rows:
+                chunks[-1] += rows
+        fmt = "short" if format_of(a.data) == "short" else "long"
+        scenes: list[dict[str, Any]] = []
+        try:
+            for i, chunk in enumerate(chunks):
+                v = {"sentences": chunk, "first": i == 0, "last": i == len(chunks) - 1, "format": fmt}
+                scenes += [s.model_dump() for s in self.ask(ctx, "smart", "storyboard", v, StoryboardOut).scenes]
+        except Exception as e:
+            log.warning("storyboard plan failed (%s); the video uses the rule-based plan", e)
+            return {"story": None}
+        return {"story": scenes}
+
+
+@register
 class NarrateScript(Step):
     """Piper reads the script aloud, sentence by sentence, so the subtitles know when each one is said."""
 
@@ -46,7 +87,7 @@ class NarrateScript(Step):
         lines = spoken_lines(a.data.get("script", {}).get("sections", []))
         if not lines:
             raise PermanentError("This script has no spoken words to read.")
-        voice = ctx.inputs.get("voice") or default_voice(ctx.schedule.language)
+        voice = voice_for(" ".join(t for t, _ in lines), str(ctx.inputs.get("voice") or ""))  # fits the words
         with tempfile.TemporaryDirectory() as d:
             wav, mp3 = Path(d) / "voice.wav", Path(d) / "voice.mp3"
             timings, engine = self.deps.narrator.speak(lines, voice, wav)
@@ -65,7 +106,7 @@ class NarrateScript(Step):
 class RenderScriptVideo(Step):
     name = "render_script_video"
     queue = Queue.MEDIA
-    needs = ("narrate_script",)
+    needs = ("narrate_script",)  # plan_storyboard is optional: without it the plan is rule-based
 
     def run(self, ctx: Context) -> dict[str, Any]:
         a = load_script(self, ctx)
@@ -74,7 +115,11 @@ class RenderScriptVideo(Step):
         with tempfile.TemporaryDirectory() as d:
             out = Path(d) / "video.mp4"
             self.deps.media.render_script_video(
-                n["units"], self.deps.storage.get(n["audio_key"]), format_of(a.data) == "short", out
+                n["units"],
+                self.deps.storage.get(n["audio_key"]),
+                format_of(a.data) == "short",
+                out,
+                (ctx.outputs.get("plan_storyboard") or {}).get("story"),
             )
             key = self.deps.storage.put(out, f"videos/{a.channel_id}/{a.id}-{stamp}.mp4")
         with self.deps.uow() as uow:

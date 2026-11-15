@@ -43,8 +43,11 @@ def test_a_short_gets_a_vertical_video_and_a_long_video_a_wide_one(container, us
         assert uow.runs.get(res.run_id).status == RunStatus.DONE
         short, long_ = uow.assets.get(short_script.id, user_id), uow.assets.get(long_script.id, user_id)
     assert container.media["media"].videos[-3:] == [(3, True), (3, False), (3, True)]
+    # the LLM storyboard reaches the renderer, numbering the narrator's sentences across the whole script
+    assert [sc["sentences"] for sc in container.media["media"].stories[-2]] == [[0], [1], [2]]
     spoken = [voice for _, voice in container.media["narrator"].spoken]
-    assert spoken == ["en-IN-PrabhatNeural", "hi-IN-SwaraNeural", "en-IN-PrabhatNeural"]  # unknown choices are ignored
+    # a Hindi voice cannot read an English script, and an unknown voice means automatic: both get the English default
+    assert spoken == ["en-IN-PrabhatNeural", "en-IN-PrabhatNeural", "en-IN-PrabhatNeural"]
     for a in (short, long_):
         assert a.data["video_key"].startswith("videos/") and a.data["audio_key"].startswith("audio/")
         assert container.storage.exists(a.data["video_key"]) and container.storage.exists(a.data["audio_key"])
@@ -85,6 +88,7 @@ def test_script_page_has_the_generate_button_the_player(container, user_and_chan
     after = client.get(f"/assets/{long_script.id}").text
     assert "<video" in after and "Download video (MP4)" in after and "Make the video again" in after
     assert "Last voice: Fake voice" in after
+    assert '<option value="en-IN-NeerjaNeural" selected>' in after  # the voice used last stays picked
     assert f"/files/asset/{long_script.id}/audio?download=1" in after
     assert client.get(f"/files/asset/{long_script.id}/video").status_code == 200
     assert "Video ready" in client.get("/scripts?format=long").text

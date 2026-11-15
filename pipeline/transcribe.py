@@ -3,7 +3,7 @@ known, its own spelling is laid onto the recognised times (ASR spells Hinglish i
 
 import json
 import logging
-import re
+import unicodedata
 from difflib import SequenceMatcher
 from pathlib import Path
 
@@ -30,7 +30,9 @@ def save(words: list[TimedWord], path: Path) -> None:
 
 
 def norm(word: str) -> str:
-    return re.sub(r"[^\w]", "", word.lower())
+    """The word's letters and digits, lowercase, for matching. Devanagari vowel signs count as letters (a plain `\\w`
+    drops them, which turns a word into a different one)."""
+    return "".join(c for c in word.lower() if c.isalnum() or unicodedata.category(c).startswith("M"))
 
 
 def transcribe(audio: Path, model: str, language: str, prompt: str = "") -> list[TimedWord]:

@@ -11,6 +11,7 @@ from tests.fakes import transcript
 from ytstudio.adapters import vendor_skills as v
 from ytstudio.adapters.media import FFmpegMediaProcessor, PillowImageRenderer, words_timed
 from ytstudio.config import ROOT
+from ytstudio.domain.errors import TransientError
 from ytstudio.domain.models import Cue, RetentionPoint
 
 VENDOR = ROOT / "vendor" / "youtube-agent-skill"
@@ -292,3 +293,20 @@ def test_chatterbox_voice_runs_its_own_python_and_falls_back_to_the_microsoft_vo
     texts = [("Hi.", 0.1)]
     v = narrator.VoiceNarrator(Edge(), None, None)  # type: ignore[arg-type]
     assert v.speak(texts, "chatterbox-en", tmp_path / "x.wav")[1] == "Microsoft neural voice"  # not installed
+
+    class Box:
+        def speak(self, lines, language, out):
+            self.language = language
+            return []
+
+    box = Box()
+    v = narrator.VoiceNarrator(Edge(), None, box)  # type: ignore[arg-type]
+    assert v.speak(texts, "chatterbox-hinglish", tmp_path / "x.wav")[1] == "Chatterbox (open source)"
+    assert box.language == "hi"  # Roman-letter Hinglish is read with Chatterbox's Hindi accent
+
+    class Broken:
+        def speak(self, lines, language, out):
+            raise TransientError("Chatterbox could not run")
+
+    v = narrator.VoiceNarrator(Edge(), None, Broken())  # type: ignore[arg-type]
+    assert v.speak(texts, "chatterbox-hinglish", tmp_path / "x.wav")[1] == "Microsoft neural voice"  # not Piper

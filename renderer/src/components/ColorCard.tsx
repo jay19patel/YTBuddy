@@ -1,7 +1,7 @@
 import {useCurrentFrame, useVideoConfig} from 'remotion';
 import {cardSpring} from '../motion';
 import {useScene} from '../SceneContext';
-import {colorOf, inkOn, SANS, THEME, useUnits} from '../theme';
+import {colorOf, inkOn, lineHeightOf, SANS, THEME, useUnits} from '../theme';
 import type {CardProps} from '../types.gen';
 import {Words} from './TextBlock';
 
@@ -27,7 +27,7 @@ export const ColorCard: React.FC<{props: CardProps; at: number; k: number}> = ({
 				fontFamily: SANS,
 				fontSize: THEME.type.card.size * u * k,
 				letterSpacing: THEME.type.card.tracking,
-				lineHeight: THEME.type.lineHeight,
+				lineHeight: lineHeightOf(props.words),
 				boxShadow: THEME.shadow.card,
 				opacity: frame < at ? 0 : Math.min(1, s * 2),
 				transform,

@@ -36,9 +36,10 @@ steps = [
   "queue_shorts",          # io: review queue + notify
 ]
 
-# Turn a script into a video: Piper reads it aloud, then a white screen with black subtitles is drawn to match.
+# Turn a script into a video: the LLM storyboards it (code windows, checklists, stickers, follow button), a neural
+# voice reads it aloud, then the kinetic typography video is drawn to the voice, always ending on the outro.
 [pipelines.script_video]
-steps = ["narrate_script", "render_script_video"]
+steps = ["plan_storyboard", "narrate_script", "render_script_video"]
 
 [trends]
 providers = ["most_popular", "niche_search", "custom_topics"]

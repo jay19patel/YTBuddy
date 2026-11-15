@@ -28,15 +28,15 @@
         <h3><i class="lead-ico" data-lucide="lightbulb"></i><a href="/assets/{{ s.id }}">{{ s.title }}</a></h3>
         {{ m.review_actions(s, "/scripts?format=" ~ fmt) }}
       </div>
-      <div class="chips">{{ m.chips(fmt, d | is_manual) }}<span class="chip"><i data-lucide="hourglass"></i>No script yet</span></div>
+      <div class="chips">{{ m.chips(fmt, d | is_manual, d | script_lang(channel_language)) }}<span class="chip"><i data-lucide="hourglass"></i>No script yet</span></div>
       {% if d.angle %}<p>{{ d.angle }}</p>{% endif %}
       <p class="muted">{{ s.created_at.strftime("%-d %b %Y") }}{% if d.outlier_refs %} · {{ d.outlier_refs | length }} outlier reference(s){% endif %}</p>
-      <div class="actions">{{ m.post("/ideas/" ~ s.id ~ "/develop", "Write the script", "btn small") }}</div>
+      {{ m.write_script(s.id, "Write the script", "btn small", d | script_lang(channel_language)) }}
     </article>
     {% else %}
     <article class="card">
       <div class="section-head"><h3><a href="/assets/{{ s.id }}">{{ s.title }}</a></h3>{{ m.review_actions(s, "/scripts?format=" ~ fmt) }}</div>
-      <div class="chips">{{ m.chips(fmt, d | is_manual) }}{% if d.video_key %}<span class="chip auto"><i data-lucide="video"></i>Video ready</span>{% endif %}</div>
+      <div class="chips">{{ m.chips(fmt, d | is_manual, d | script_lang(channel_language)) }}{% if d.video_key %}<span class="chip auto"><i data-lucide="video"></i>Video ready</span>{% endif %}</div>
       {% if fmt == "short" %}
         <p class="muted">{{ s.created_at.strftime("%-d %b %Y") }} · about {{ (d.script.estimated_minutes * 60) | round | int }} seconds · hook panel score {{ d.hook.panel_score }}</p>
         <pre class="copyable">{{ d.hook.hook }}</pre>

@@ -21,7 +21,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
 from pipeline import markup, segment
-from pipeline.schema import TEXT_TYPES, Background, Element, Scene, Timeline, VideoInfo, Word
+from pipeline.schema import TEXT_TYPES, Background, Element, Scene, Timeline, VideoInfo, Word, color
 from pipeline.theme import EMOJI
 from pipeline.transcribe import TimedWord, norm
 
@@ -312,7 +312,239 @@ def auto_story(
                 content=content,
             )
         )
-    return Story(scenes=scenes)
+    return finish(Story(scenes=scenes))
+
+
+# ---------------------------------------------------------------- every video ends the same way
+
+OUTRO = {"bg": "black", "layout": "outro", "watermark": "none", "transition": "crossfade", "duration": 3.5,
+         "content": [{"outro": "next video"}]}  # fmt: skip
+FOLLOW_WORDS = ("follow", "subscrib")
+
+
+def finish(story: Story) -> Story:
+    """The end every video shares: the last scene that asks to follow or subscribe gets the follow button tapped on
+    that word (unless it has one), then the outro."""
+    scenes = [s for s in story.scenes if s.layout != "outro"]
+    for k in range(len(scenes) - 1, -1, -1):
+        s = scenes[k]
+        toks = [norm(t.text) for e in s.content if (x := spoken_text(e)) is not None for t in markup.parse(x)]
+        if not toks:
+            continue
+        hit = next((i for i, w in enumerate(toks) if w.startswith(FOLLOW_WORDS)), None)
+        if hit is not None and not any(kind_of(e) == "button_state" for e in s.content):
+            spoken = [e for e in s.content if spoken_text(e) is not None]  # the follow card replaces other visuals
+            card = {"button_state": "follow", "at": "#0", "tap_at": f"#{hit}"}
+            bg = {"kind": "diagonal", "color": "beige", "panel": "blue"}
+            scenes[k] = s.model_copy(
+                update={"layout": "text_plus_window", "bg": bg, "bg_word": "follow", "content": [*spoken, card]}
+            )
+        break  # only the last spoken scene
+    return Story(scenes=[*scenes, StoryScene.model_validate(OUTRO)])
+
+
+# ---------------------------------------------------------------- planned mode: a storyboard the LLM wrote
+
+DRY_WORD = 0.4  # seconds per word when a scene is planned on made-up times to check it
+
+
+def from_sentences(raw: list[dict[str, Any]], sentences: list[str], video: VideoInfo, assets: Path) -> Story:
+    """A storyboard whose scenes name the sentences they say (by index into `sentences`, the narrator's split), made
+    safe to render. It must say every sentence once, in order (else ValueError). The scene's real words are fitted
+    into its lines (an LLM shortens and rewords), keeping the lines' breaks and emphasis; a scene setting or a visual
+    that would not render (an unknown sticker, an anchor on a word the scene does not say, bad props) is dropped.
+    Ends with `finish`."""
+    if [i for s in raw for i in s.get("sentences") or []] != list(range(len(sentences))):
+        raise ValueError("the storyboard must say every sentence once, in order")
+    scenes: list[StoryScene] = []
+    for s in raw:
+        said = [sentences[i] for i in s["sentences"]]
+        content = _normalized(s.get("content") or [])
+        lines = _fit([e for e in content if spoken_text(e) is not None], [w for x in said for w in x.split()])
+        if lines is None:
+            log.warning("storyboard scene %s has no lines; plain lines used", s["sentences"])
+            plain = [{"hero": _unmarked(x), **({"clear": True} if j else {})} for j, x in enumerate(said)]
+            content = plain + content
+        else:
+            fitted = iter(lines)
+            content = [x for e in content if (x := next(fitted) if spoken_text(e) is not None else e) is not None]
+            content = _attached([x for e in content for x in (_split(e) if spoken_text(e) is not None else [e])])
+        spoken = [e for e in content if spoken_text(e) is not None]
+        fields = {k: v for k, v in s.items() if k in ("bg", "layout", "bg_word", "transition") and v is not None}
+        try:
+            scene = StoryScene.model_validate(fields | {"content": spoken})
+            if scene.layout == "outro" or not _renders(scene, video, assets):
+                raise ValueError(scene.layout)
+        except ValueError:
+            scene = StoryScene(bg=BACKGROUNDS[len(scenes) % len(BACKGROUNDS)], content=spoken)
+        kept = [e for e in content if e in spoken or _renders(_with(scene, content, spoken, e), video, assets)]
+        scenes.append(scene.model_copy(update={"content": kept}))
+    return finish(Story(scenes=scenes))
+
+
+def _normalized(content: list[Any]) -> list[dict[str, Any]]:
+    """Entries in storyboard shape, from the shapes an LLM tends to write instead: {"clear": true} on its own (it
+    clears before the next line), a visual's "at" inside its props, a typing box written as a ui_window."""
+    out: list[dict[str, Any]] = []
+    clear = False
+    for e in content:
+        if not isinstance(e, dict):
+            continue
+        if e and set(e) <= MODIFIERS:
+            clear = clear or bool(e.get("clear"))
+            continue
+        try:
+            k = kind_of(e)
+        except ValueError:
+            continue
+        if k == "outro":
+            continue
+        e = dict(e)
+        v = e[k]
+        if k not in SPOKEN and isinstance(v, dict):
+            v = dict(v)
+            if k == "sticker" and "name" in v:
+                e[k] = v.pop("name")
+                e |= {x: y for x, y in v.items() if x not in e}
+            else:
+                e |= {m: v.pop(m) for m in list(v) if m in MODIFIERS and m not in e}
+                e[k] = v
+        if k == "ui_window" and e.get("ui_window") == "typing":
+            items = e.get("items") or [{}]
+            text = str(items[0].get("label") or e.get("text") or e.get("title") or "")
+            e = {"typing": text, **{m: e[m] for m in MODIFIERS if m in e}}
+            if items[0].get("at") and "at" not in e:
+                e["at"] = items[0]["at"]
+        if spoken_text(e) is not None:  # a line keeps only the settings a line has (an LLM adds "size" and the like)
+            keep = {k, *MODIFIERS, "color"} | ({"enter"} if k == "card" else set())
+            e = {x: y for x, y in e.items() if x in keep and (x != "color" or _is_color(y))}
+            if clear:
+                e["clear"], clear = True, False
+        out.append(e)
+    return out
+
+
+def _is_color(v: Any) -> bool:
+    try:
+        color(str(v))
+    except ValueError:
+        return False
+    return True
+
+
+def _fit(lines: list[dict[str, Any]], real: list[str]) -> list[dict[str, Any] | None] | None:
+    """The scene's real words laid into the LLM's lines: each word goes to the line whose word it matches (unmatched
+    words to the line before), in order, with the line's emphasis on matching words. A line left with no words becomes
+    None. None when there are no lines at all."""
+    from difflib import SequenceMatcher
+
+    toks: list[tuple[int, markup.Token]] = []
+    for j, e in enumerate(lines):
+        text = spoken_text(e) or ""
+        try:
+            parsed = markup.parse(text)
+        except ValueError:  # a broken emphasis marker
+            parsed = [markup.Token(w) for w in _unmarked(text).split()]
+        toks += [(j, t) for t in parsed]
+    if not toks:
+        return None
+    owner: list[int | None] = [None] * len(real)
+    style: list[markup.Token | None] = [None] * len(real)
+    ops = SequenceMatcher(None, [norm(t.text) for _, t in toks], [norm(w) for w in real], autojunk=False)
+    for tag, i1, i2, j1, j2 in ops.get_opcodes():
+        for d, jj in enumerate(range(j1, j2)):
+            if tag in ("equal", "replace"):
+                owner[jj] = toks[min(i1 + d, i2 - 1)][0]
+                style[jj] = toks[i1 + d][1] if tag == "equal" else None
+    last = next((o for o in owner if o is not None), 0)
+    for i, o in enumerate(owner):  # unmatched words join the line before; lines never go backwards
+        last = owner[i] = max(last, o if o is not None else last)
+    out: list[dict[str, Any] | None] = []
+    for j, e in enumerate(lines):
+        ws = [
+            marked(markup.Token(_unmarked(w), t.style, t.color) if t else markup.Token(_unmarked(w)))
+            for w, o, t in zip(real, owner, style, strict=True)
+            if o == j and _unmarked(w)
+        ]
+        if not ws:
+            out.append(None)
+            continue
+        k = kind_of(e)
+        e = dict(e)
+        e[k] = {**e[k], "text": " ".join(ws)} if isinstance(e[k], dict) else " ".join(ws)
+        out.append(e)
+    return out
+
+
+def _attached(content: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """An LLM writes a visual after the line it shows, where a storyboard would show it with the next line: a visual
+    with no time of its own comes in with its first timed row, else with the line before it."""
+    out: list[dict[str, Any]] = []
+    for e in content:
+        if spoken_text(e) is None and "at" not in e:
+            v = e[kind_of(e)]
+            rows = e.get("items") or (v.get("items") if isinstance(v, dict) else None) or []
+            ats = [it["at"] for it in rows if isinstance(it, dict) and it.get("at")]
+            lines = [i for i, x in enumerate(out) if spoken_text(x) is not None]
+            if ats:
+                e = {**e, "at": ats[0]}
+            elif lines:
+                out.insert(lines[-1], e)
+                continue
+        out.append(e)
+    return out
+
+
+MAX_WORDS = {"hero": 9, "card": 9}  # per on-screen line; lead, sub and caption are smaller and take 14
+
+
+def _split(e: dict[str, Any]) -> list[dict[str, Any]]:
+    """A fitted line too long to read as one (words the LLM left out pile up) as several, cut after a sentence where
+    one ends; each later piece clears the screen. Fitted lines mark word by word, so cutting at spaces is safe."""
+    k = kind_of(e)
+    words = (spoken_text(e) or "").split()
+    most = MAX_WORDS.get(k, 14)
+    if len(words) <= most:
+        return [e]
+    pieces: list[list[str]] = [[]]
+    for w in words:
+        pieces[-1].append(w)
+        if len(pieces[-1]) >= most or (_unmarked(w)[-1:] in ".?!" and len(pieces[-1]) >= 3):
+            pieces.append([])
+    tail = pieces.pop()
+    if len(tail) < 3 and pieces:  # no tiny last piece
+        pieces[-1] += tail
+    elif tail:
+        pieces.append(tail)
+    out = []
+    for j, p in enumerate(pieces):
+        piece = dict(e) | ({"clear": True} if j else {})
+        piece[k] = {**e[k], "text": " ".join(p)} if isinstance(e[k], dict) else " ".join(p)
+        out.append(piece)
+    return out
+
+
+def _unmarked(line: str) -> str:
+    return re.sub(r"!!|[*\[\]~{}|]", "", line)
+
+
+def _with(scene: StoryScene, content: list[dict[str, Any]], spoken: list[dict[str, Any]], e: dict[str, Any]) -> Any:
+    """The scene's spoken lines plus this one visual, in its place."""
+    return scene.model_copy(update={"content": [x for x in content if x in spoken or x is e]})
+
+
+def _renders(scene: StoryScene, video: VideoInfo, assets: Path) -> bool:
+    """Whether the scene plans into a valid timeline on made-up word times, with no file missing that a plain scene
+    would not also miss (the brand files are checked when the real video is drawn)."""
+    story = Story(scenes=[scene])
+    toks = script_of(story)
+    words = [TimedWord(word=t.text, start=i * DRY_WORD, end=(i + 0.9) * DRY_WORD) for i, t in enumerate(toks)]
+    try:
+        t = plan(story, words, video, len(toks) * DRY_WORD + 1)
+        bare = plan(Story(scenes=[scene.model_copy(update={"content": [{"hero": "x"}]})]), words[:1], video, 1)
+    except (ValueError, TypeError, KeyError, AttributeError):
+        return False
+    return set(missing_assets(t, assets)) <= set(missing_assets(bare, assets))
 
 
 class LlmLine(BaseModel):

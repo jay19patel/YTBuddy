@@ -23,7 +23,7 @@ from ytstudio.config import get_settings
 from ytstudio.container import get_container
 from ytstudio.domain.errors import DomainError, NotFound
 from ytstudio.domain.models import format_of
-from ytstudio.domain.video import VOICES
+from ytstudio.domain.video import LANGUAGES, VOICES, script_language
 from ytstudio.logging_setup import request_id_var, setup_logging
 
 HERE = Path(__file__).parent
@@ -92,9 +92,14 @@ def asset_format(d: dict[str, Any]) -> str:
 
 
 # the Chatterbox voices are offered only once CHATTERBOX_PYTHON points at an install
-templates.env.globals["voices"] = lambda: [
-    v for v in VOICES if not v.id.startswith("chatterbox") or get_container().s.chatterbox_python
-]
+def available_voices() -> list[Any]:
+    return [v for v in VOICES if not v.id.startswith("chatterbox") or get_container().s.chatterbox_python]
+
+
+templates.env.globals["voices"] = available_voices
+templates.env.globals["languages"] = LANGUAGES
+templates.env.filters["language_name"] = lambda v: {"hi": "Hindi", "en": "English", "hinglish": "Hinglish"}.get(v, v)
+templates.env.filters["script_lang"] = script_language  # (data, channel's language) -> hi | en | hinglish
 templates.env.filters["asset_format"] = asset_format
 templates.env.filters["is_manual"] = lambda d: (
     d.get("source") == "manual" or (d.get("idea") or {}).get("source") == "manual"

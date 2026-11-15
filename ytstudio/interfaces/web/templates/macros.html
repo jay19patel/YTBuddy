@@ -1,6 +1,15 @@
-{% macro chips(fmt, manual) -%}
+{% macro chips(fmt, manual, lang="") -%}
 <span class="chip {{ fmt }}"><i data-lucide="{{ 'smartphone' if fmt == 'short' else 'clapperboard' }}"></i>{{ "Short" if fmt == "short" else "Long video" }}</span>
 <span class="chip {{ 'manual' if manual else 'auto' }}"><i data-lucide="{{ 'pencil' if manual else 'sparkles' }}"></i>{{ "My idea" if manual else "Auto" }}</span>
+{% if lang %}<span class="chip lang"><i data-lucide="languages"></i>{{ lang | language_name }}</span>{% endif %}
+{%- endmacro %}
+
+{% macro write_script(idea_id, label, cls, lang) -%}
+<form method="post" action="/ideas/{{ idea_id }}/develop" class="actions">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <select name="language" aria-label="Script language">{% for v, n in languages %}<option value="{{ v }}" {% if v == lang %}selected{% endif %}>{{ n }}</option>{% endfor %}</select>
+  <button class="{{ cls }}" type="submit" data-busy="Starting…">{{ label }}</button>
+</form>
 {%- endmacro %}
 
 {% macro format_toggle(base, fmt, counts, status) -%}
@@ -51,7 +60,13 @@
   <span class="tag {{ a.status }}">{{ a.status | replace("_", " ") }}</span>
   {% if a.status != "approved" %}{{ post("/assets/" ~ a.id ~ "/status", "Approve", fields={"status": "approved", "next": next}) }}{% endif %}
   {% if a.status != "discarded" %}{{ post("/assets/" ~ a.id ~ "/status", "Discard", "copy", fields={"status": "discarded", "next": next}) }}{% endif %}
-  {% if a.kind in ("idea", "script", "package", "seo", "brief") and a.data.source != "manual" %}{{ post("/assets/" ~ a.id ~ "/regenerate", "Regenerate", "copy", fields={"next": next}) }}{% endif %}
+  {% if a.kind == "script" %}
+    <form method="post" action="/assets/{{ a.id }}/regenerate" class="actions">
+      <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="next" value="{{ next }}">
+      <select name="language" aria-label="Write it again in">{% for v, n in languages %}<option value="{{ v }}" {% if v == a.data | script_lang %}selected{% endif %}>{{ n }}</option>{% endfor %}</select>
+      <button class="copy" type="submit" data-busy="Starting…">Regenerate</button>
+    </form>
+  {% elif a.kind in ("idea", "package", "seo", "brief") and a.data.source != "manual" %}{{ post("/assets/" ~ a.id ~ "/regenerate", "Regenerate", "copy", fields={"next": next}) }}{% endif %}
   {% if a.kind in ("idea", "script", "package", "seo") %}
     {% set what = "this idea and the script, package and SEO written for it" if a.kind == "idea" else "this " ~ a.kind %}
     {{ post("/assets/" ~ a.id ~ "/delete", "Delete", "copy", fields={"next": next},
@@ -80,8 +95,9 @@
   "make_covers": ("Make covers", "Draws a cover image for each Short."),
   "write_short_meta": ("Titles and descriptions", "The AI names each Short."),
   "queue_shorts": ("Add to review", "Puts the Shorts in your review list."),
+  "plan_storyboard": ("Plan the scenes", "The AI designs each scene: colours, code windows, checklists, stickers and the follow button."),
   "narrate_script": ("Create the voice", "Piper reads the script aloud on this computer. The first time it downloads the voice (about 63 MB)."),
-  "render_script_video": ("Draw the subtitles and make the video", "Draws each subtitle and joins them with the voice. A long script can take a few minutes."),
+  "render_script_video": ("Draw the video", "Draws every scene to the voice and ends on the outro. A long script can take a few minutes."),
 } %}
 
 {% macro stepper(run) -%}

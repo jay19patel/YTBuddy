@@ -7,7 +7,7 @@
   <section class="panel">
     <h2>{{ idea.title }}</h2>
     {% if idea.data.angle %}<pre class="copyable">{{ idea.data.angle }}</pre>{% endif %}
-    <p class="hint">Writing the {{ "Short" if fmt == "short" else "long-video" }} script{% if fmt == "long" %}, its titles and its description{% endif %}. The script opens here by itself when it is ready.</p>
+    <p class="hint">Writing the {{ "Short" if fmt == "short" else "long-video" }} script in {{ lang | language_name }}{% if fmt == "long" %}, with its titles and description{% endif %}. The script opens here by itself when it is ready.</p>
   </section>
   {{ m.run_progress(run) }}
 {% else %}
@@ -18,16 +18,19 @@
       <input type="radio" id="f-long" name="format" value="long" {% if fmt == "long" %}checked{% endif %}><label for="f-long">Long video</label>
       <input type="radio" id="f-short" name="format" value="short" {% if fmt == "short" %}checked{% endif %}><label for="f-short">Short</label>
     </div>
+    <div class="modes" role="radiogroup" aria-label="Script language">
+      {% for v, n in languages %}<input type="radio" id="l-{{ v }}" name="language" value="{{ v }}" {% if lang == v %}checked{% endif %}><label for="l-{{ v }}">{{ n }}</label>{% endfor %}
+    </div>
     <div class="row"><label class="field" for="i-title">Your idea or topic</label>
       <input type="text" id="i-title" name="title" maxlength="200" required autofocus placeholder="For example: Python se video editing automate kaise kare"></div>
     <div class="row"><label class="field" for="i-details">What you want in it (optional)</label>
-      <textarea id="i-details" name="details" rows="8" maxlength="2000" placeholder="Your points, your own work or results, steps to explain, examples, who it is for, the ending you want. Write in Hinglish or English, as notes; the script follows them."></textarea></div>
+      <textarea id="i-details" name="details" rows="8" maxlength="2000" placeholder="Your points, your own work or results, steps to explain, examples, who it is for, the ending you want. Notes can be in any language; the script is written in the language you chose above."></textarea></div>
     <div class="actions">
       <button class="btn" type="submit" data-busy="Starting…"><i data-lucide="pen-line"></i>Write my script</button>
       <a class="copy" href="/scripts?format={{ fmt }}">Cancel</a>
     </div>
   </form>
-  <p class="hint">It takes a few seconds for a Short and about a minute for a long video. Then you can edit it, approve it and press Generate video on the script.</p>
+  <p class="hint">It takes a few seconds for a Short and about a minute for a long video. Then you can edit it, approve it and press Generate video on the script; the voice is picked to match the language.</p>
 </section>
 {% endif %}
 {% endblock %}
