@@ -32,3 +32,23 @@ def timed_words(units: list[dict[str, Any]]) -> list[Word]:
                 out.append(Word(w, t, t + dt, i))
                 t += dt
     return out
+
+
+def on_speech(units: list[dict[str, Any]], heard: list[tuple[float, float]]) -> list[Word]:
+    """The script's words placed on the words a recogniser heard (start, end), sentence by sentence: for a voice that
+    reports no word times (Chatterbox). The heard words may be in another script (a Hinglish line is read from its
+    Devanagari copy) or split differently, so a sentence's words are laid over its heard words in proportion; a sentence
+    the recogniser heard nothing in falls back to sharing its time by word length."""
+    out: list[Word] = []
+    for i, u in enumerate(units):
+        tokens = str(u["text"]).split()
+        start, end = float(u["start"]), float(u["end"])
+        inside = [h for h in heard if start - 0.15 <= (h[0] + h[1]) / 2 <= end + 0.15]
+        if not tokens or not inside:
+            out += [Word(w.text, w.start, w.end, i) for w in timed_words([u])]
+            continue
+        n, m = len(tokens), len(inside)
+        for k, tok in enumerate(tokens):
+            first, last = inside[k * m // n], inside[max(k * m // n, (k + 1) * m // n - 1)]
+            out.append(Word(tok, first[0], last[1], i))
+    return out

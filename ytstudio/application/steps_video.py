@@ -6,15 +6,19 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from pydantic import Field, create_model
+
 from ytstudio.application.pipeline import Context, Step, register
-from ytstudio.application.schemas import StoryboardOut
+from ytstudio.application.schemas import SpeechOut, StoryboardOut
 from ytstudio.application.steps_daily import LLMStep
+from ytstudio.config import ROOT
 from ytstudio.domain.errors import PermanentError
 from ytstudio.domain.models import Asset, Queue, format_of
 from ytstudio.domain.video import voice_for
 
 SENTENCE_END = re.compile(r"(?<=[.!?।])\s+|\n+")
 PAUSE_SENTENCE, PAUSE_SECTION = 0.28, 0.7  # a human reader breathes between thoughts
+SPEECH_CHUNK = 40  # sentences per Devanagari request
 PLAN_CHUNK = 30  # sentences per storyboard request, so a long video's plan fits in one reply each
 
 log = logging.getLogger(__name__)
@@ -64,15 +68,43 @@ class PlanStoryboard(LLMStep):
             if rows:
                 chunks[-1] += rows
         fmt = "short" if format_of(a.data) == "short" else "long"
+        stickers = sorted(p.stem for p in (ROOT / "assets" / "stickers").glob("*.png"))  # new files are used at once
         scenes: list[dict[str, Any]] = []
         try:
             for i, chunk in enumerate(chunks):
-                v = {"sentences": chunk, "first": i == 0, "last": i == len(chunks) - 1, "format": fmt}
+                v = {
+                    "sentences": chunk,
+                    "first": i == 0,
+                    "last": i == len(chunks) - 1,
+                    "format": fmt,
+                    "stickers": stickers,
+                }
                 scenes += [s.model_dump() for s in self.ask(ctx, "smart", "storyboard", v, StoryboardOut).scenes]
         except Exception as e:
             log.warning("storyboard plan failed (%s); the video uses the rule-based plan", e)
             return {"story": None}
         return {"story": scenes}
+
+
+@register
+class SpeechText(LLMStep):
+    """Chatterbox's Hindi model garbles Roman letters, so a Hinglish script is read from a Devanagari copy of each
+    sentence. The screen keeps the script's own words; times still match because each copy is the same sentence."""
+
+    name = "speech_text"
+
+    def run(self, ctx: Context) -> dict[str, Any]:
+        lines = [t for t, _ in spoken_lines(load_script(self, ctx).data.get("script", {}).get("sections", []))]
+        if voice_for(" ".join(lines), str(ctx.inputs.get("voice") or "")) != "chatterbox-hinglish":
+            return {"lines": None}
+        out: list[str] = []
+        for i in range(0, len(lines), SPEECH_CHUNK):
+            chunk = lines[i : i + SPEECH_CHUNK]
+            exact = create_model(
+                "SpeechOut", __base__=SpeechOut, lines=(list[str], Field(min_length=len(chunk), max_length=len(chunk)))
+            )
+            out += self.ask(ctx, "fast", "speech", {"sentences": chunk}, exact).lines
+        return {"lines": out}
 
 
 @register
@@ -88,14 +120,17 @@ class NarrateScript(Step):
         if not lines:
             raise PermanentError("This script has no spoken words to read.")
         voice = voice_for(" ".join(t for t, _ in lines), str(ctx.inputs.get("voice") or ""))  # fits the words
+        speech = (ctx.outputs.get("speech_text") or {}).get("lines")
+        said = [(x, pause) for x, (_, pause) in zip(speech, lines, strict=True)] if speech else lines
         with tempfile.TemporaryDirectory() as d:
             wav, mp3 = Path(d) / "voice.wav", Path(d) / "voice.mp3"
-            timings, engine = self.deps.narrator.speak(lines, voice, wav)
+            timings, engine = self.deps.narrator.speak(said, voice, wav)
             self.deps.media.encode_audio(wav, mp3)
             stamp = int(self.deps.clock.now().timestamp())
             key = self.deps.storage.put(mp3, f"audio/{a.channel_id}/{a.id}-{stamp}.mp3")
         units = [
             {"text": text, "start": round(t["start"], 3), "end": round(t["end"], 3), "words": t["words"]}
+            | ({"heard": t["heard"]} if t.get("heard") else {})
             for (text, _), t in zip(lines, timings, strict=True)
         ]
         seconds = round(timings[-1]["end"], 2)

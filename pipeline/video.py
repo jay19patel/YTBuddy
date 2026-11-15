@@ -33,6 +33,12 @@ def auto_story(cfg: Settings, tokens: list[markup.Token], words: list[TimedWord]
     return plan.auto_story(tokens, words, cfg.plan.min_scene_s, cfg.plan.max_scene_s, bool(cfg.brand.character))
 
 
+def music_bed(cfg: Settings) -> Path | None:
+    """The first track in assets/music (mp3, wav or m4a), played under the voice; none when the folder is empty."""
+    tracks = sorted(p for p in (cfg.assets / "music").glob("*") if p.suffix.lower() in (".mp3", ".wav", ".m4a"))
+    return tracks[0] if tracks else None
+
+
 def render_video(
     cfg: Settings,
     timeline: Timeline,

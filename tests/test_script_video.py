@@ -37,7 +37,7 @@ def test_only_spoken_words_are_read_in_sentences_with_longer_pauses_between_sect
 def test_a_short_gets_a_vertical_video_and_a_long_video_a_wide_one(container, user_and_channel):
     user_id, long_script, short_script = scripts(container, user_and_channel)
     res = container.review.make_video(user_id, short_script.id)
-    container.review.make_video(user_id, long_script.id, voice="hi-IN-SwaraNeural")
+    container.review.make_video(user_id, long_script.id, voice="chatterbox-hi")
     container.review.make_video(user_id, container.other_short.id, voice="nonsense")
     with container.uow() as uow:
         assert uow.runs.get(res.run_id).status == RunStatus.DONE
@@ -47,7 +47,7 @@ def test_a_short_gets_a_vertical_video_and_a_long_video_a_wide_one(container, us
     assert [sc["sentences"] for sc in container.media["media"].stories[-2]] == [[0], [1], [2]]
     spoken = [voice for _, voice in container.media["narrator"].spoken]
     # a Hindi voice cannot read an English script, and an unknown voice means automatic: both get the English default
-    assert spoken == ["en-IN-PrabhatNeural", "en-IN-PrabhatNeural", "en-IN-PrabhatNeural"]
+    assert spoken == ["chatterbox-en", "chatterbox-en", "chatterbox-en"]
     for a in (short, long_):
         assert a.data["video_key"].startswith("videos/") and a.data["audio_key"].startswith("audio/")
         assert container.storage.exists(a.data["video_key"]) and container.storage.exists(a.data["audio_key"])
@@ -78,17 +78,17 @@ def test_script_page_has_the_generate_button_the_player(container, user_and_chan
     before = client.get(f"/assets/{long_script.id}").text
     assert "Generate video" in before and "<video" not in before
     assert "B-roll" not in before
-    assert "Indian English, man" in before and 'name="look"' not in before  # one look: the kinetic style
+    assert "Chatterbox, English" in before and 'name="look"' not in before  # one look: the kinetic style
     r = client.post(
         f"/scripts/{long_script.id}/video",
-        data={"csrf": token, "voice": "en-IN-NeerjaNeural"},
+        data={"csrf": token, "voice": "chatterbox-en"},
         follow_redirects=False,
     )
     assert r.status_code == 303 and "m=started" in r.headers["location"]
     after = client.get(f"/assets/{long_script.id}").text
     assert "<video" in after and "Download video (MP4)" in after and "Make the video again" in after
     assert "Last voice: Fake voice" in after
-    assert '<option value="en-IN-NeerjaNeural" selected>' in after  # the voice used last stays picked
+    assert '<option value="chatterbox-en" selected>' in after  # the voice used last stays picked
     assert f"/files/asset/{long_script.id}/audio?download=1" in after
     assert client.get(f"/files/asset/{long_script.id}/video").status_code == 200
     assert "Video ready" in client.get("/scripts?format=long").text

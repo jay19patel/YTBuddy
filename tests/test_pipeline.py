@@ -126,6 +126,20 @@ def test_lock_contention_skips_second_run(container, user_and_channel):
     assert res.status == RunStatus.SKIPPED
 
 
+def test_a_lock_left_by_a_run_that_ended_is_taken_over(container, user_and_channel):
+    user_id, ch = user_and_channel
+    with container.uow() as uow:  # its worker was killed: the run was marked failed but nothing released the lock
+        dead, _ = uow.runs.create(user_id, ch, "test", "k-dead", {})
+        uow.runs.set_status(dead.id, RunStatus.FAILED, "worker killed")
+        alive, _ = uow.runs.create(user_id, ch, "test2", "k-alive", {})
+        uow.runs.set_status(alive.id, RunStatus.RUNNING)
+        uow.commit()
+    container.lock.acquire(f"{ch}:test", 60, str(dead.id))
+    assert container.runner.start(user_id, ch, "test", "k4", {}, steps=["t_count"]).status == RunStatus.RUNNING
+    container.lock.acquire(f"{ch}:test2", 60, str(alive.id))  # a run still going keeps its lock
+    assert container.runner.start(user_id, ch, "test2", "k5", {}, steps=["t_count"]).status == RunStatus.SKIPPED
+
+
 def test_owner_check_on_start(container, user_and_channel):
     from ytstudio.domain.errors import NotFound
 

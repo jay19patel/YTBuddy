@@ -11,7 +11,7 @@ from ytstudio.container import get_container
 from ytstudio.domain.metrics import median_views
 from ytstudio.domain.models import AssetStatus, RetentionPoint, Video
 from ytstudio.domain.video import VOICES, script_language, spoken_text, voice_for, voices_for
-from ytstudio.interfaces.web.app import Page, asset_format, available_voices, back, csrf, page, queries, render
+from ytstudio.interfaces.web.app import Page, asset_format, back, csrf, page, queries, render
 from ytstudio.interfaces.web.routes_auth import cookie
 
 router = APIRouter()
@@ -189,9 +189,8 @@ def asset(request: Request, asset_id: int, p: Page = Depends(page)) -> Response:
     default_lang = channel_language(a["channel_id"])
     if a["kind"] == "script":  # the voices that fit the script's own words, and the one chosen when left on automatic
         text = spoken_text(a["data"])
-        fitting = {v.id for v in voices_for(text)}
         extra |= {
-            "script_voices": [v for v in available_voices() if v.id in fitting],
+            "script_voices": voices_for(text),
             "auto_voice": next(v.label for v in VOICES if v.id == voice_for(text)),
             "script_lang": script_language(a["data"], default_lang),
         }
@@ -264,9 +263,14 @@ async def edit(request: Request, asset_id: int, p: Page = Depends(csrf)) -> Resp
 
 @router.post("/assets/{asset_id}/regenerate")
 def regenerate(
-    asset_id: int, next: str = Form("/today"), language: str = Form(""), p: Page = Depends(csrf)
+    asset_id: int,
+    next: str = Form("/today"),
+    language: str = Form(""),
+    title: str = Form(""),
+    details: str | None = Form(None),
+    p: Page = Depends(csrf),
 ) -> Response:
-    result = get_container().review.regenerate(p.user.id, asset_id, language)
+    result = get_container().review.regenerate(p.user.id, asset_id, language, title, details)
     return started(next if next.startswith("/") and not next.startswith("//") else "/today", result)
 
 

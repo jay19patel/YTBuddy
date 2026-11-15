@@ -203,20 +203,25 @@ class FFmpegMediaProcessor:
         from pipeline.render import RenderError
         from pipeline.settings import load
         from pipeline.transcribe import TimedWord, align
-        from ytstudio.adapters.kinetic import timed_words
+        from ytstudio.adapters.kinetic import on_speech
 
+        cfg = load()
         tokens = [markup.Token(t) for u in units for w in str(u["text"]).split() if (t := _plain_word(w))]
         heard = [TimedWord(word=w["text"], start=w["start"], end=w["end"]) for u in units for w in u.get("words") or []]
         if heard:  # the voice reported its words: lay the script's spelling and punctuation onto them
             words = align([t.text for t in tokens], heard)
-        else:  # the offline voice: each sentence's time shared out by word length
+        else:  # Chatterbox reports no word times: where each word was heard, so the text keeps in sync
+            spoken = [(a, b) for u in units for a, b in u.get("heard") or []] or speech_times(
+                audio, cfg.transcribe.model
+            )
             words = [
-                TimedWord(word=t, start=w.start, end=w.end) for w in timed_words(units) if (t := _plain_word(w.text))
+                TimedWord(word=t, start=w.start, end=w.end)
+                for w in on_speech(units, spoken)
+                if (t := _plain_word(w.text))
             ]
             tokens = [markup.Token(w.word) for w in words]
         if not words:
             raise PermanentError("There are no words to show in the video.")
-        cfg = load()
         info = video.video_info(cfg, "9x16" if vertical else "16x9")
         planned = None
         if story:
@@ -232,7 +237,7 @@ class FFmpegMediaProcessor:
             out.parent.mkdir(parents=True, exist_ok=True)
             with tempfile.TemporaryDirectory() as d:
                 part = out.with_name(f".{out.name}.part.mp4")
-                video.render_video(cfg, timeline, audio, part, Path(d))
+                video.render_video(cfg, timeline, audio, part, Path(d), video.music_bed(cfg), sfx=True)
                 os.replace(part, out)
         except (RenderError, FileNotFoundError, ValueError) as e:
             raise PermanentError(f"The video could not be rendered: {e}") from e
@@ -297,6 +302,30 @@ class FasterWhisperTranscriber:
         lang = None if language in (None, "hinglish") else language
         segments, _ = self._model.transcribe(decode_16k_mono(media_path), language=lang, vad_filter=True)
         return [Cue(s.start, s.end, s.text.strip()) for s in segments]
+
+
+@lru_cache(maxsize=1)
+def _whisper(model: str) -> Any:
+    from faster_whisper import WhisperModel
+
+    return WhisperModel(model, compute_type="int8")
+
+
+def heard_words(audio: Path, language: str | None = None, model: str = "small") -> list[tuple[str, float, float]]:
+    """(word, start, end) of every word heard in the audio, in whatever language it is spoken (or `language`). Empty
+    when faster-whisper is not installed: the words then share each sentence's time by length."""
+    try:
+        whisper = _whisper(model)
+    except ImportError:
+        log.warning("faster-whisper is not installed: word times are estimated, not heard")
+        return []
+    segments, _ = whisper.transcribe(decode_16k_mono(audio), language=language, word_timestamps=True, vad_filter=True)
+    return [(w.word.strip(), w.start, w.end) for s in segments for w in (s.words or [])]
+
+
+def speech_times(audio: Path, model: str) -> list[tuple[float, float]]:
+    """(start, end) of every word heard in the narration."""
+    return [(a, b) for _, a, b in heard_words(audio, model=model)]
 
 
 def _plain_word(w: str) -> str:

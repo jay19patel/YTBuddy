@@ -90,6 +90,11 @@ class StoryboardOut(BaseModel):
     scenes: list[StoryboardScene] = Field(min_length=1)
 
 
+class SpeechOut(BaseModel):
+    VERSION: ClassVar[str] = "1"
+    lines: list[str] = Field(description="Each sentence in Devanagari, in the same order")
+
+
 class PackagePair(BaseModel):
     title: str = Field(max_length=100)
     thumbnail_text: str = Field(max_length=40)

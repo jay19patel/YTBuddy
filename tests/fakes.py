@@ -49,6 +49,9 @@ class DictLock:
             return True
         return False
 
+    def holder(self, key: str) -> str | None:
+        return self.held.get(key)
+
 
 class NoLimit:
     def acquire(self, bucket: str, rate_per_s: float, capacity: int, timeout_s: float = 30) -> bool:
@@ -311,6 +314,7 @@ def llm_responses() -> dict[str, Any]:
             ],
         },
         "short_script": lambda req: short_script_in(str(req.variables["language"])),
+        "speech": lambda req: {"lines": [f"देवनागरी {x}" for x in req.variables["sentences"]]},
         "storyboard": lambda req: {
             "scenes": [
                 {"sentences": [r["n"]], "layout": "left_text", "content": [{"hero": r["text"]}, {"sticker": "fire"}]}

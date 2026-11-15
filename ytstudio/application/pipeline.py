@@ -5,6 +5,7 @@ Steps self-register with @register; config/pipelines.toml decides which run and 
 The runner persists each step's output, so a re-run skips finished steps and resumes at the failed one.
 """
 
+import logging
 from abc import ABC
 from dataclasses import dataclass, field
 from typing import Any, ClassVar
@@ -13,6 +14,8 @@ from ytstudio.domain.errors import NotFound, PermanentError
 from ytstudio.domain.events import JobFailed
 from ytstudio.domain.models import Asset, Channel, Queue, Run, RunStatus, Schedule, User
 from ytstudio.ports import Deps, DistributedLock, StepPlan, TaskDispatcher
+
+log = logging.getLogger(__name__)
 
 REGISTRY: dict[str, type["Step"]] = {}
 
@@ -128,6 +131,28 @@ class PipelineRunner:
     def lock_key(run: Run) -> str:
         return f"{run.channel_id}:{run.pipeline}"
 
+    def _lock(self, run: Run) -> bool:
+        """The channel's lock for this pipeline. A lock still held by a run that has ended (its worker was killed, so
+        nothing released it, and the run was then marked failed) is taken over instead of blocking for hours."""
+        key = self.lock_key(run)
+        if self.lock.acquire(key, self.lock_ttl, owner=str(run.id)):
+            return True
+        holder = self.lock.holder(key)
+        if not holder or not holder.isdigit():
+            return False
+        with self.deps.uow() as uow:
+            try:
+                ended = uow.runs.get(int(holder)).status not in (
+                    RunStatus.RUNNING,
+                    RunStatus.PENDING,
+                    RunStatus.WAITING,
+                )
+            except NotFound:
+                ended = True
+        if ended:
+            log.warning("run %s ended without releasing %s; run %s takes it", holder, key, run.id)
+        return ended and self.lock.release(key, holder) and self.lock.acquire(key, self.lock_ttl, owner=str(run.id))
+
     def start(
         self,
         user_id: int,
@@ -145,7 +170,7 @@ class PipelineRunner:
             uow.commit()
         if not created and run.status in (RunStatus.DONE, RunStatus.RUNNING, RunStatus.PENDING, RunStatus.WAITING):
             return StartResult(run.id, run.status, "already ran or running for this key")
-        if not self.lock.acquire(self.lock_key(run), self.lock_ttl, owner=str(run.id)):
+        if not self._lock(run):
             with self.deps.uow() as uow:
                 uow.runs.set_status(run.id, RunStatus.SKIPPED, "another run for this channel and pipeline is active")
                 uow.commit()

@@ -28,18 +28,15 @@ def test_the_language_of_a_text_is_detected(text, language):
 
 
 def test_a_voice_that_cannot_read_the_script_is_swapped_for_one_that_can():
-    assert voice_for(ENGLISH, "hi-IN-SwaraNeural") == "en-IN-PrabhatNeural"  # Hindi voice on English words
-    assert voice_for(HINDI, "en-IN-NeerjaNeural") == "hi-IN-MadhurNeural"  # English voice on Devanagari
-    assert voice_for(HINDI, "hi-IN-SwaraNeural") == "hi-IN-SwaraNeural"  # a fitting choice is kept
-    assert voice_for(HINGLISH, "en-IN-NeerjaNeural") == "en-IN-NeerjaNeural"
-    assert voice_for(HINGLISH, "") == default_voice("hinglish") == "en-IN-PrabhatNeural"
-    assert voice_for(HINDI, "nonsense") == "hi-IN-MadhurNeural"
-    assert {v.language for v in voices_for(HINDI)} == {"hi"} and {v.language for v in voices_for(ENGLISH)} == {"en"}
-    # Chatterbox reads Hindi, and Hinglish in Roman letters with a Hindi accent; English scripts are not offered that
-    assert "chatterbox-hi" in {v.id for v in voices_for(HINDI)}
-    assert {"chatterbox-en", "chatterbox-hinglish"} <= {v.id for v in voices_for(HINGLISH)}
-    assert "chatterbox-hinglish" not in {v.id for v in voices_for(ENGLISH)}
-    assert voice_for(HINGLISH, "chatterbox-hinglish") == "chatterbox-hinglish"
+    assert voice_for(ENGLISH, "chatterbox-hi") == "chatterbox-en"  # the Hindi voice on English words
+    assert voice_for(HINDI, "chatterbox-en") == "chatterbox-hi"  # the English voice on Devanagari
+    assert voice_for(HINDI, "chatterbox-hi") == "chatterbox-hi"  # a fitting choice is kept
+    assert voice_for(HINGLISH, "chatterbox-en") == "chatterbox-en"
+    assert voice_for(HINGLISH, "") == default_voice("hinglish") == "chatterbox-hinglish"
+    assert voice_for(HINDI, "nonsense") == "chatterbox-hi"
+    assert [v.id for v in voices_for(HINDI)] == ["chatterbox-hi"]
+    assert [v.id for v in voices_for(ENGLISH)] == ["chatterbox-en"]
+    assert [v.id for v in voices_for(HINGLISH)] == ["chatterbox-hinglish", "chatterbox-en"]
 
 
 def test_a_script_is_in_the_language_chosen_for_it_else_the_language_of_its_words_else_the_channels():
@@ -59,11 +56,11 @@ def test_the_language_picked_for_an_idea_is_what_its_script_and_voice_are_in(con
         script = next(a for a in uow.assets.for_run(run.run_id) if a.kind == "script")
     assert container.llm.calls[-1].variables["language"] == "Hindi (Devanagari script)"
     assert script.data["language"] == "hi" and script.data["script"]["sections"][0]["spoken"] == HINDI
-    for asked in ("", "en-IN-NeerjaNeural", "hi-IN-SwaraNeural"):  # automatic, a wrong voice, a fitting voice
+    for asked in ("", "chatterbox-en", "chatterbox-hi"):  # automatic, a wrong voice, a fitting voice
         container.review.make_video(user_id, script.id, asked)
         container.clock.t += timedelta(seconds=5)  # a video made in the same second would count as the same job
     spoken = [voice for _, voice in container.media["narrator"].spoken]
-    assert spoken == ["hi-IN-MadhurNeural", "hi-IN-MadhurNeural", "hi-IN-SwaraNeural"]
+    assert spoken == ["chatterbox-hi", "chatterbox-hi", "chatterbox-hi"]
 
 
 def test_an_english_script_is_regenerated_in_hindi_when_hindi_is_picked(container, user_and_channel, db_url):
@@ -76,9 +73,16 @@ def test_an_english_script_is_regenerated_in_hindi_when_hindi_is_picked(containe
     client, token = logged_in(db_url, user_id)
     page = client.get(f"/assets/{script.id}").text
     assert 'action="/assets/' + str(script.id) + '/regenerate"' in page and '<option value="en" selected>' in page
+    assert ">Rent trick</textarea>" in page and ">One point</textarea>" in page  # the prompt, ready to edit
     r = client.post(
         f"/assets/{script.id}/regenerate",
-        data={"csrf": token, "language": "hi", "next": f"/assets/{script.id}"},
+        data={
+            "csrf": token,
+            "language": "hi",
+            "next": f"/assets/{script.id}",
+            "title": "Rent  trick 2",
+            "details": " Two ",
+        },
         follow_redirects=False,
     )
     assert r.status_code == 303
@@ -87,6 +91,7 @@ def test_an_english_script_is_regenerated_in_hindi_when_hindi_is_picked(containe
     assert container.llm.calls[-1].variables["language"] == "Hindi (Devanagari script)"
     assert again.data["language"] == "hi" and again.data["script"]["sections"][0]["spoken"] == HINDI
     assert again.data["history"][0]["language"] == "en"  # the English version is kept in its history
+    assert again.data["idea"]["title"] == "Rent trick 2" and again.data["idea"]["angle"] == "Two"  # the edited prompt
 
 
 def test_each_language_reaches_the_prompt_and_without_a_choice_the_channels_setting_is_used(
@@ -127,8 +132,8 @@ def test_the_create_form_offers_the_languages_starting_on_the_channels_own(conta
     page = client.get(done.headers["location"]).text
     assert ">Hindi</span>" in page  # the language chip of the script
     voices = page.split('name="voice"')[1].split("</select>")[0]
-    assert "Voice: automatic (Hindi, man)" in voices and "Hindi, woman" in voices
-    assert "Indian English" not in voices and "American English" not in voices  # only voices that can read it
+    assert "Voice: automatic (Chatterbox, Hindi)" in voices
+    assert "Chatterbox, English" not in voices  # only voices that can read it
 
 
 def test_an_english_script_offers_english_voices_and_ideas_offer_a_language_when_you_write_them(
@@ -147,4 +152,27 @@ def test_an_english_script_offers_english_voices_and_ideas_offer_a_language_when
         script = next(a for a in uow.assets.for_run(run.run_id) if a.kind == "script")
     page = client.get(f"/assets/{script.id}").text
     voices = page.split('name="voice"')[1].split("</select>")[0]
-    assert "Voice: automatic (Indian English, man)" in voices and "Hindi, man" not in voices
+    assert "Voice: automatic (Chatterbox, English)" in voices and "Chatterbox, Hindi" not in voices
+
+
+def test_a_hinglish_script_is_read_by_chatterbox_from_a_devanagari_copy_and_shown_as_written(
+    container, user_and_channel
+):
+    user_id, channel = user_and_channel
+    idea = container.review.add_idea(user_id, channel, "Rent trick", "One point", format="short", language="hinglish")
+    run = container.review.develop(user_id, idea.id)
+    with container.uow() as uow:
+        script = next(a for a in uow.assets.for_run(run.run_id) if a.kind == "script")
+    res = container.review.make_video(user_id, script.id)  # automatic: the Hinglish voice
+    lines, voice = container.media["narrator"].spoken[-1]
+    assert voice == "chatterbox-hinglish"
+    assert [t for t, _ in lines] == [
+        f"देवनागरी {x}"
+        for x in ("Rent zyada mat do, yeh karo.", "Har mahine receipt maango.", "Isse mere barah hazaar bache.")
+    ]
+    with container.uow() as uow:
+        units = uow.runs.get(res.run_id).outputs["narrate_script"]["units"]
+    assert units[0]["text"] == "Rent zyada mat do, yeh karo."  # the screen shows the script as written
+    container.clock.t += timedelta(seconds=5)
+    container.review.make_video(user_id, script.id, "chatterbox-en")  # the English voice reads the Roman words
+    assert container.media["narrator"].spoken[-1][0][0][0] == "Rent zyada mat do, yeh karo."

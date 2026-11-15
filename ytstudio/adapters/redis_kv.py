@@ -64,6 +64,10 @@ class RedisLock:
         # Compare-and-delete: never free a lock someone else took after ours expired.
         return bool(self._release(keys=[f"yt:lock:{key}"], args=[owner]))
 
+    def holder(self, key: str) -> str | None:
+        v = self.r.get(f"yt:lock:{key}")
+        return v.decode() if isinstance(v, bytes) else v
+
 
 class RedisRateLimiter:
     def __init__(self, r: redis.Redis):

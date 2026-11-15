@@ -8,18 +8,28 @@ from pipeline.schema import Timeline
 from pipeline.settings import AudioCfg
 
 STEREO = "aformat=sample_rates=48000:channel_layouts=stereo"
-SFX_FOR = {"sticker": "pop", "card": "whoosh", "button_state": "click", "typing": "typing", "ui_window": "pop"}
+# a sound plays only when its file is in assets/sfx; the starter set is pop.wav alone, for icons and emoji
+SFX_FOR = {"sticker": "pop", "card": "whoosh", "button_state": "click", "typing": "typing"}
 
 
 def sfx_cues(t: Timeline, sfx_dir: Path) -> list[tuple[Path, float]]:
-    """A sound per pop, whoosh, click and typing burst, from your own files in assets/sfx (missing ones skipped)."""
+    """A sound per pop, whoosh, click and typing burst, from the files in assets/sfx (missing ones skipped). Variants
+    named pop-2.wav, pop-3.wav, ... take turns with pop.wav, so a repeated sound does not repeat exactly."""
+    used: dict[str, int] = defaultdict(int)
+
+    def cue(name: str, at: float) -> None:
+        files = [f for f in [sfx_dir / f"{name}.wav", *sorted(sfx_dir.glob(f"{name}-*.wav"))] if f.exists()]
+        if files:
+            cues.append((files[used[name] % len(files)], at))
+            used[name] += 1
+
     cues: list[tuple[Path, float]] = []
     for s in t.scenes:
-        if s.transition_in != "cut" and (f := sfx_dir / "whoosh.wav").exists():
-            cues.append((f, s.start))
+        if s.transition_in != "cut":
+            cue("whoosh", s.start)
         for e in s.elements:
-            if (name := SFX_FOR.get(e.type)) and (f := sfx_dir / f"{name}.wav").exists():
-                cues.append((f, e.start))
+            if name := SFX_FOR.get(e.type):
+                cue(name, e.start)
     return cues
 
 

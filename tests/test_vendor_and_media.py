@@ -11,7 +11,7 @@ from tests.fakes import transcript
 from ytstudio.adapters import vendor_skills as v
 from ytstudio.adapters.media import FFmpegMediaProcessor, PillowImageRenderer, words_timed
 from ytstudio.config import ROOT
-from ytstudio.domain.errors import TransientError
+from ytstudio.domain.errors import PermanentError
 from ytstudio.domain.models import Cue, RetentionPoint
 
 VENDOR = ROOT / "vendor" / "youtube-agent-skill"
@@ -264,7 +264,7 @@ def test_the_microsoft_voice_loses_the_silence_padded_around_each_clip(tmp_path,
     assert abs(second["words"][0]["start"] - (keep + 0.2 + narrator.EDGE_EDGE)) < 0.05
 
 
-def test_chatterbox_voice_runs_its_own_python_and_falls_back_to_the_microsoft_voice(tmp_path, monkeypatch):
+def test_chatterbox_runs_its_own_python_or_its_server_and_never_falls_back_to_another_voice(tmp_path, monkeypatch):
     import wave
 
     from ytstudio.adapters import narrator
@@ -286,13 +286,48 @@ def test_chatterbox_voice_runs_its_own_python_and_falls_back_to_the_microsoft_vo
         assert w.getnframes() == 36000
     assert t[0]["words"] == []
 
+    import base64
+    import io
+    import json
+    import threading
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    asked: list[dict] = []
+
+    class Server(BaseHTTPRequestHandler):  # stands in for tools/chatterbox_server.py
+        def do_POST(self):
+            body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            asked.append(body)
+            buf = io.BytesIO()
+            with wave.open(buf, "wb") as w:
+                w.setnchannels(1), w.setsampwidth(2), w.setframerate(24000), w.writeframes(b"\0\0" * 24000)
+            raw = json.dumps({"wavs": [base64.b64encode(buf.getvalue()).decode()] * len(body["lines"])}).encode()
+            self.send_response(200), self.send_header("Content-Length", str(len(raw))), self.end_headers()
+            self.wfile.write(raw)
+
+        def log_message(self, *a):
+            pass
+
+    srv = HTTPServer(("127.0.0.1", 0), Server)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        served = narrator.ChatterboxNarrator(url=f"http://127.0.0.1:{srv.server_port}/")
+        t = served.speak([("एक।", 0.25), ("दो।", 0.0)], "hi", tmp_path / "s.wav")
+        assert [(x["start"], x["end"]) for x in t] == [(0.0, 1.0), (1.25, 2.25)]
+        assert asked == [{"lines": ["एक।", "दो।"], "lang": "hi"}]
+    finally:
+        srv.shutdown()
+    down = narrator.ChatterboxNarrator(url="http://127.0.0.1:9")  # nothing listens there
+    with pytest.raises(PermanentError, match="Start it on the Mac"):
+        down.speak([("One.", 0.0)], "en", tmp_path / "d.wav")
+
     class Edge:
         def speak(self, lines, voice, out):
-            return [{"start": 0, "end": 1, "words": []}] * len(lines)
+            raise AssertionError("a Chatterbox voice must never fall back to another voice")
 
     texts = [("Hi.", 0.1)]
-    v = narrator.VoiceNarrator(Edge(), None, None)  # type: ignore[arg-type]
-    assert v.speak(texts, "chatterbox-en", tmp_path / "x.wav")[1] == "Microsoft neural voice"  # not installed
+    with pytest.raises(PermanentError, match="not set up"):
+        narrator.VoiceNarrator(Edge(), None, None).speak(texts, "chatterbox-en", tmp_path / "x.wav")  # type: ignore[arg-type]
 
     class Box:
         def speak(self, lines, language, out):
@@ -302,11 +337,66 @@ def test_chatterbox_voice_runs_its_own_python_and_falls_back_to_the_microsoft_vo
     box = Box()
     v = narrator.VoiceNarrator(Edge(), None, box)  # type: ignore[arg-type]
     assert v.speak(texts, "chatterbox-hinglish", tmp_path / "x.wav")[1] == "Chatterbox (open source)"
-    assert box.language == "hi"  # Roman-letter Hinglish is read with Chatterbox's Hindi accent
+    assert box.language == "hi"  # Hinglish is read by the Hindi model (from its Devanagari copy)
 
-    class Broken:
-        def speak(self, lines, language, out):
-            raise TransientError("Chatterbox could not run")
 
-    v = narrator.VoiceNarrator(Edge(), None, Broken())  # type: ignore[arg-type]
-    assert v.speak(texts, "chatterbox-hinglish", tmp_path / "x.wav")[1] == "Microsoft neural voice"  # not Piper
+def test_words_of_a_voice_without_word_times_land_on_the_speech_that_was_heard():
+    from ytstudio.adapters.kinetic import on_speech
+
+    units = [
+        {"text": "Aaj FastAPI seekhenge.", "start": 0.0, "end": 4.0},  # read from Devanagari: 5 heard words for 3
+        {"text": "Bas itna.", "start": 4.3, "end": 6.0},
+        {"text": "Silent here.", "start": 6.3, "end": 7.3},
+    ]
+    heard = [(0.5, 0.8), (1.0, 1.2), (1.2, 1.4), (1.4, 1.6), (2.5, 3.0), (4.4, 4.8), (5.0, 5.5)]
+    w = on_speech(units, heard)
+    assert [(x.text, x.start, x.end) for x in w[:5]] == [
+        ("Aaj", 0.5, 0.8),
+        ("FastAPI", 1.0, 1.4),  # the speech, not the pause before it: the text keeps in sync
+        ("seekhenge.", 1.4, 3.0),
+        ("Bas", 4.4, 4.8),
+        ("itna.", 5.0, 5.5),
+    ]
+    assert [x.unit for x in w[5:]] == [2, 2] and w[5].start == 6.3  # heard nothing: shared by length
+
+
+def test_chatterbox_sentences_are_cut_where_their_last_word_ends_and_babble_is_said_again(tmp_path):
+    import math
+    import struct
+
+    from ytstudio.adapters import narrator
+
+    # what Whisper heard in real Chatterbox takes: one clean, one running on with made-up words
+    clean = [("यह", 0.0, 0.28), ("न्युमेडिकर", 0.28, 0.86), ("डेटा", 0.86, 1.1), ("के", 1.1, 1.26), ("लिए", 1.26, 1.38)]
+    clean += [("बना", 1.38, 1.6), ("हैं", 1.6, 1.86)]
+    assert narrator.sentence_end("यह न्यूमेरिकल डेटा के लिए बना है।", clean)[0] == 6
+    babble = [("सिर्फ", 0.0, 0.3), ("नंबर", 0.3, 0.6), ("सीहा", 0.6, 0.88), ("जाँते", 0.88, 1.2), ("हैं", 1.2, 1.78)]
+    babble += [("अन", 1.78, 1.96), ("दीवन", 1.96, 2.24), ("एक", 2.24, 2.44), ("उच", 2.44, 2.58), ("कर", 2.58, 2.74)]
+    babble += [("नामा", 2.74, 3.06), ("सिर्फ", 3.88, 4.44), ("नंबर", 4.44, 4.62)]
+    k, said, extra = narrator.sentence_end("सिर्फ नंबर्स यहाँ चलते हैं।", babble)
+    assert k == 4 and said > 0.6 and extra > 0.5
+    # the English words of a Hinglish line come back in Roman letters: still the whole line, nothing extra
+    roman = [("Manual", 0.0, 0.4), ("trading", 0.4, 0.8), ("छोड़", 0.8, 1.0), ("दो", 1.0, 1.2)]
+    k, said, extra = narrator.sentence_end("मैन्युअल ट्रेडिंग छोड़ दो।", roman)
+    assert k == 3 and said > 0.8 and extra == 0
+
+    rate = narrator.CHATTERBOX_RATE  # 1 s of voice, 1 s of silence, 0.5 s of murmur
+
+    def tone(seconds: float, amp: int) -> bytes:
+        return b"".join(struct.pack("<h", int(amp * math.sin(i / 7))) for i in range(int(seconds * rate)))
+
+    take = tone(1, 12000) + tone(1, 0) + tone(0.5, 300)
+    cut, lead = narrator.trimmed(take, rate, [("a", 0.0, 0.5), ("b", 0.5, 0.95)], 1)
+    assert lead == 0 and 1.0 <= len(cut) / 2 / rate <= 1.15
+
+    calls = []
+
+    def listen(wav, lang):  # the first take babbles, the second is clean
+        calls.append(lang)
+        return babble if len(calls) == 1 else babble[:5]
+
+    cb = narrator.ChatterboxNarrator(url="http://x", listen=listen)
+    cb._say = lambda texts, language, work: [tone(1, 12000) + tone(2, 9000)] * len(texts)  # type: ignore[method-assign]
+    timings = cb.speak([("सिर्फ नंबर्स यहाँ चलते हैं।", 0.3)], "hi", tmp_path / "v.wav")
+    assert calls == ["hi", "hi"]
+    assert timings[0]["end"] < 2.3 and len(timings[0]["heard"]) == 5  # cut after "हैं" (1.78 s) and its fading tail

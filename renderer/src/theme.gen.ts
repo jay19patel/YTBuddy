@@ -96,14 +96,14 @@ export const THEME = {
   },
   "motion": {
     "wordIn": {
-      "frames": 7,
-      "blur": 12,
-      "y": 12
+      "frames": 6,
+      "blur": 3,
+      "y": 14
     },
     "ghost": {
       "frames": 6,
-      "opacity": 0.32,
-      "blur": 8
+      "opacity": 0,
+      "blur": 0
     },
     "accent": {
       "frames": 6
@@ -119,7 +119,7 @@ export const THEME = {
     "serif": {
       "frames": 10,
       "scaleFrom": 0.9,
-      "blur": 16
+      "blur": 6
     },
     "cardSpring": {
       "damping": 14,

@@ -46,7 +46,8 @@ class Settings(BaseSettings):
     whisper_model: str = "small"
     piper_voice_en: str = "en_US-lessac-medium"  # offline fallback voices, downloaded once into MEDIA_DIR/voices
     piper_voice_hi: str = "hi_IN-priyamvada-medium"
-    chatterbox_python: str = ""  # python of a venv with chatterbox-tts installed; empty = the Chatterbox voices are off
+    chatterbox_url: str = ""  # tools/chatterbox_server.py, e.g. http://host.docker.internal:8765 (preferred)
+    chatterbox_python: str = ""  # or: python of a venv with chatterbox-tts installed, run once per script
     chatterbox_ref_audio: str = ""  # optional 10 s WAV of the voice to clone; empty = Chatterbox's default voice
     enable_manual_publish: bool = True  # existing upload/live pages
     enable_ytdlp: bool = False  # own videos only; check YouTube's terms first

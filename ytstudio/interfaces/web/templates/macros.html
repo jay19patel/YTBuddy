@@ -65,6 +65,11 @@
       <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="next" value="{{ next }}">
       <select name="language" aria-label="Write it again in">{% for v, n in languages %}<option value="{{ v }}" {% if v == a.data | script_lang %}selected{% endif %}>{{ n }}</option>{% endfor %}</select>
       <button class="copy" type="submit" data-busy="Starting…">Regenerate</button>
+      {% if a.data.idea %}<details class="edit"><summary>Edit the prompt first</summary>
+        <label class="field">Idea</label><textarea name="title" rows="2" maxlength="200">{{ a.data.idea.title }}</textarea>
+        <label class="field">Details</label><textarea name="details" rows="4" maxlength="2000">{{ a.data.idea.angle }}</textarea>
+        <div class="hint">Regenerate writes the script again from this prompt.</div>
+      </details>{% endif %}
     </form>
   {% elif a.kind in ("idea", "package", "seo", "brief") and a.data.source != "manual" %}{{ post("/assets/" ~ a.id ~ "/regenerate", "Regenerate", "copy", fields={"next": next}) }}{% endif %}
   {% if a.kind in ("idea", "script", "package", "seo") %}
@@ -96,7 +101,8 @@
   "write_short_meta": ("Titles and descriptions", "The AI names each Short."),
   "queue_shorts": ("Add to review", "Puts the Shorts in your review list."),
   "plan_storyboard": ("Plan the scenes", "The AI designs each scene: colours, code windows, checklists, stickers and the follow button."),
-  "narrate_script": ("Create the voice", "Piper reads the script aloud on this computer. The first time it downloads the voice (about 63 MB)."),
+  "speech_text": ("Prepare the Hindi reading", "For a Hinglish script read by Chatterbox: a Devanagari copy of each sentence, so the Hindi voice reads it naturally."),
+  "narrate_script": ("Create the voice", "Chatterbox reads the script aloud on your Mac. A long script takes a few minutes."),
   "render_script_video": ("Draw the video", "Draws every scene to the voice and ends on the outro. A long script can take a few minutes."),
 } %}
 

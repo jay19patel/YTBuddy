@@ -433,8 +433,11 @@ class Review:
             uow.assets.update(a)
             uow.commit()
 
-    def regenerate(self, user_id: int, asset_id: int, language: str = "") -> StartResult:
-        """Write the asset again. A script can be written again in another `language` (hi, en or hinglish)."""
+    def regenerate(
+        self, user_id: int, asset_id: int, language: str = "", title: str = "", details: str | None = None
+    ) -> StartResult:
+        """Write the asset again. A script can be written again in another `language` (hi, en or hinglish), and from
+        an edited prompt: its idea's `title` and `details` (the angle)."""
         with self.uow() as uow:
             a = uow.assets.get(asset_id, user_id)
             seed = uow.runs.get(a.run_id).outputs if a.run_id else {}
@@ -446,6 +449,10 @@ class Review:
         inputs: dict[str, Any] = {"regenerate": True, "asset_id": a.id, "target_step": step, "seed_outputs": seed}
         if "idea" in a.data:
             inputs["idea"] = a.data["idea"] | ({"language": language} if language in LANGUAGE_IDS else {})
+            if title := " ".join(title.split())[:200]:
+                inputs["idea"]["title"] = title
+            if details is not None:
+                inputs["idea"]["angle"] = details.strip()[:2000]
         key = f"{a.channel_id}:regen:{a.id}:{int(self.clock.now().timestamp())}"
         return self.runner.start(user_id, a.channel_id, "regen", key, inputs, steps=[step, "save_section"])
 

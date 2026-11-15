@@ -36,10 +36,11 @@ steps = [
   "queue_shorts",          # io: review queue + notify
 ]
 
-# Turn a script into a video: the LLM storyboards it (code windows, checklists, stickers, follow button), a neural
-# voice reads it aloud, then the kinetic typography video is drawn to the voice, always ending on the outro.
+# Turn a script into a video: the LLM storyboards it (code windows, checklists, stickers, follow button), Chatterbox
+# reads it aloud (a Hinglish script from a Devanagari copy, which its Hindi model reads naturally), then the kinetic
+# typography video is drawn to the voice with sound effects, always ending on the outro.
 [pipelines.script_video]
-steps = ["plan_storyboard", "narrate_script", "render_script_video"]
+steps = ["plan_storyboard", "speech_text", "narrate_script", "render_script_video"]
 
 [trends]
 providers = ["most_popular", "niche_search", "custom_topics"]

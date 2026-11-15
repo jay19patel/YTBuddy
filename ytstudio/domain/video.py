@@ -7,23 +7,18 @@ from typing import Any
 
 @dataclass(frozen=True)
 class Voice:
-    id: str  # a Microsoft neural voice name; the offline fallback is picked from its language
+    id: str
     label: str
     language: str  # "en" or "hi"; "hinglish" for a voice offered only for Hindi written in Roman letters
 
 
-VOICES = (
-    Voice("en-IN-PrabhatNeural", "Indian English, man", "en"),
-    Voice("en-IN-NeerjaNeural", "Indian English, woman", "en"),
-    Voice("en-US-AndrewMultilingualNeural", "American English, man", "en"),
-    Voice("en-US-AvaMultilingualNeural", "American English, woman", "en"),
-    Voice("hi-IN-MadhurNeural", "Hindi, man", "hi"),
-    Voice("hi-IN-SwaraNeural", "Hindi, woman", "hi"),
-    Voice("chatterbox-en", "Chatterbox AI voice, English (slower)", "en"),
-    Voice("chatterbox-hi", "Chatterbox AI voice, Hindi (slower)", "hi"),
-    Voice("chatterbox-hinglish", "Chatterbox AI voice, Hinglish (slower)", "hinglish"),
+VOICES = (  # Chatterbox only: the most natural of the voices tried
+    Voice("chatterbox-hi", "Chatterbox, Hindi", "hi"),
+    Voice("chatterbox-hinglish", "Chatterbox, Hinglish (Hindi voice)", "hinglish"),
+    Voice("chatterbox-en", "Chatterbox, English", "en"),
 )
-CHATTERBOX_LANGUAGE = {"chatterbox-en": "en", "chatterbox-hi": "hi", "chatterbox-hinglish": "hi"}  # Hindi accent
+# Hinglish is read by the Hindi model from a Devanagari copy of the script (see SpeechText): it garbles Roman letters
+CHATTERBOX_LANGUAGE = {"chatterbox-en": "en", "chatterbox-hi": "hi", "chatterbox-hinglish": "hi"}
 
 
 LANGUAGES = (
@@ -78,14 +73,8 @@ def voices_for(text: str) -> list[Voice]:
 def voice_for(text: str, requested: str = "") -> str:
     """The chosen voice if it fits the text, otherwise the default one for the text's language."""
     fits = voices_for(text)
-    return requested if requested in {v.id for v in fits} else default_voice(fits[0].language)
+    return requested if requested in {v.id for v in fits} else default_voice(detect_language(text))
 
 
-def default_voice(channel_language: str) -> str:
-    """Hinglish is Hindi in Latin letters: an Indian English voice reads it best."""
-    return "hi-IN-MadhurNeural" if channel_language == "hi" else "en-IN-PrabhatNeural"
-
-
-def voice_language(voice_id: str) -> str:
-    """The language of the text a voice reads: what a fallback voice must speak."""
-    return "hi" if voice_id.startswith("hi-") or voice_id == "chatterbox-hi" else "en"
+def default_voice(language: str) -> str:
+    return {"hi": "chatterbox-hi", "hinglish": "chatterbox-hinglish"}.get(language, "chatterbox-en")

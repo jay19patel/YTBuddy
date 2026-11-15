@@ -91,12 +91,7 @@ def asset_format(d: dict[str, Any]) -> str:
     return format_of(d if "format" in d or "effort" in d else d.get("idea") or {})
 
 
-# the Chatterbox voices are offered only once CHATTERBOX_PYTHON points at an install
-def available_voices() -> list[Any]:
-    return [v for v in VOICES if not v.id.startswith("chatterbox") or get_container().s.chatterbox_python]
-
-
-templates.env.globals["voices"] = available_voices
+templates.env.globals["voices"] = lambda: VOICES
 templates.env.globals["languages"] = LANGUAGES
 templates.env.filters["language_name"] = lambda v: {"hi": "Hindi", "en": "English", "hinglish": "Hinglish"}.get(v, v)
 templates.env.filters["script_lang"] = script_language  # (data, channel's language) -> hi | en | hinglish

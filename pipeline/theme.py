@@ -55,12 +55,12 @@ THEME: dict[str, object] = {
     "layout": {"safe": 0.05, "gap": 0.018, "stickerSize": 0.15},
     # durations in frames at 30 fps (the renderer rescales for other rates)
     "motion": {
-        "wordIn": {"frames": 7, "blur": 12, "y": 12},
-        "ghost": {"frames": 6, "opacity": 0.32, "blur": 8},
+        "wordIn": {"frames": 6, "blur": 3, "y": 14},  # a light blur only: heavy blur reads as lag
+        "ghost": {"frames": 6, "opacity": 0, "blur": 0},  # off: a blurred gray preview of the next word looks smeared
         "accent": {"frames": 6},
         "highlight": {"frames": 5, "pop": 1.08},
         "strike": {"delay": 3, "frames": 6},
-        "serif": {"frames": 10, "scaleFrom": 0.9, "blur": 16},
+        "serif": {"frames": 10, "scaleFrom": 0.9, "blur": 6},
         "cardSpring": {"damping": 14, "stiffness": 180, "mass": 1},
         "stickerSpring": {"damping": 9, "stiffness": 170, "mass": 0.9},
         "float": {"amplitude": 4, "period": 60},

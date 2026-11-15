@@ -399,3 +399,13 @@ def test_a_line_swollen_by_left_out_words_is_split_so_the_window_comes_in_on_tim
     assert c[2] == {"hero": "Step 2, ek nayi file banao, main.py.", "clear": True}
     assert c[3] == {"hero": "Usme FastAPI import karo.", "clear": True}
     assert [t.text for t in plan.script_of(s)] == " ".join(sentences).split()
+
+
+def test_sound_effects_take_turns_between_variants_and_skip_missing_files(tmp_path):
+    for name in ("pop.wav", "pop-2.wav", "typing.wav"):
+        (tmp_path / name).write_bytes(b"")
+    stickers = [{"sticker": n, "at": f"@{w}"} for n, w in (("fire", "a"), ("key", "b"), ("eyes", "c"))]
+    s = story([{"hero": "a b c"}, *stickers, {"typing": "pip", "at": "@c"}, {"card": "d", "color": "blue"}])
+    t = plan.plan(s, evenly("a b c d"), video_info(Settings(), "16x9"), 3)
+    cues = [(f.name, round(at, 2)) for f, at in mux.sfx_cues(t, tmp_path)]
+    assert cues == [("pop.wav", 0.0), ("pop-2.wav", 0.4), ("pop.wav", 0.8), ("typing.wav", 0.8)]  # no whoosh file: none

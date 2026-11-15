@@ -5,7 +5,7 @@ brand:
   avatar: brand/avatar.svg # replace with your own avatar (square PNG/SVG)
   character: brand/character.svg # replace with your own full-body presenter (transparent PNG/SVG)
 
-fps: 30
+fps: 60 # smooth motion; 30 renders twice as fast
 formats:
   16x9: [1920, 1080]
   9x16: [1080, 1920]
