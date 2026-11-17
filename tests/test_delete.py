@@ -85,3 +85,16 @@ def test_only_the_owner_can_delete_and_a_brief_cannot_be_deleted(container, user
     client, _ = logged_in(db_url, user_id)
     assert client.post(f"/assets/{made[('idea', 1)].id}/delete", data={}).status_code == 403  # no csrf token
     assert exists(container, user_id, made[("idea", 1)].id)
+
+
+def test_deleting_a_short_keeps_the_shorts_tab_open(container, user_and_channel, db_url):
+    made, user_id = daily(container, user_and_channel)
+    short = made[("idea", 3)]  # ranks 3-7 are Shorts
+    client, token = logged_in(db_url, user_id)
+    r = client.post(
+        f"/assets/{short.id}/delete", data={"csrf": token, "next": "/scripts?format=short"}, follow_redirects=False
+    )
+    assert r.headers["location"] == "/scripts?format=short&m=deleted"  # not "...short?m=deleted": that is the long tab
+    short = made[("idea", 4)]
+    r = client.post(f"/assets/{short.id}/delete", data={"csrf": token, "next": f"/assets/{short.id}"})
+    assert r.url.path == "/scripts" and r.url.params["format"] == "short"  # from its own page: back to its tab

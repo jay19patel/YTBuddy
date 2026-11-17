@@ -30,8 +30,7 @@ def two(container, yt, user_and_channel):
 
 
 def test_ideas_brief_and_jobs_are_separate(container, two, db_url):
-    for ch in ("UCme", "UCtwo"):
-        container.scheduling.run_now(two, ch)
+    runs = {ch: container.scheduling.run_now(two, ch).run_id for ch in ("UCme", "UCtwo")}
     client, _ = logged_in(db_url, two)
     for ch, mine, other in (
         ("UCme", "My Channel idea", "Second Channel idea"),
@@ -43,7 +42,7 @@ def test_ideas_brief_and_jobs_are_separate(container, two, db_url):
             assert mine in html and other not in html, (ch, path)
         other_ch = "UCtwo" if ch == "UCme" else "UCme"
         jobs = client.get("/jobs").text
-        assert f"{ch}:daily" in jobs and f"{other_ch}:daily" not in jobs
+        assert f"#{runs[ch]} ·" in jobs and f"#{runs[other_ch]} ·" not in jobs
 
 
 def test_each_channel_uses_its_own_voice(container, two):

@@ -97,6 +97,14 @@ class Step(ABC):
         raise NotImplementedError
 
 
+class Stopped(Exception):
+    """The run was stopped: a step of it that still arrives does nothing and ends the chain."""
+
+
+STOPPED = "Stopped by you."
+ACTIVE = (RunStatus.RUNNING, RunStatus.PENDING, RunStatus.WAITING)
+
+
 @dataclass
 class StartResult:
     run_id: int
@@ -190,6 +198,25 @@ class PipelineRunner:
             raise NotFound("run")
         return self.start(run.user_id, run.channel_id, run.pipeline, run.idem_key, run.inputs, run.inputs.get("steps"))
 
+    def stop(self, run_id: int, user_id: int) -> bool:
+        """Stop a run now: the step working is cut off and the rest never start. Retry resumes it from that step.
+        False when it had already ended."""
+        with self.deps.uow() as uow:
+            run = uow.runs.get(run_id)
+            if run.user_id != user_id:
+                raise NotFound("run")
+            if run.status not in ACTIVE:
+                return False
+            steps = run.inputs.get("steps") or self.pipelines.get(run.pipeline, [])
+            for step in steps:
+                if uow.runs.step_status(run_id, step) in ACTIVE:
+                    uow.runs.fail_step(run_id, step, STOPPED)
+            uow.runs.set_status(run_id, RunStatus.FAILED, STOPPED)
+            uow.commit()
+        self.lock.release(self.lock_key(run), str(run_id))
+        self.dispatcher.stop(run.idem_key, steps)
+        return True
+
     def context(self, run_id: int) -> Context:
         with self.deps.uow() as uow:
             run = uow.runs.get(run_id)
@@ -204,6 +231,8 @@ class PipelineRunner:
 
     def _begin(self, run_id: int, step: str) -> Context | None:
         with self.deps.uow() as uow:
+            if uow.runs.get(run_id).status not in ACTIVE:  # stopped, or a task redelivered after the run ended
+                raise Stopped(run_id)
             if uow.runs.step_status(run_id, step) == RunStatus.DONE:
                 return None  # idempotent re-run: output already saved
             uow.runs.start_step(run_id, step)
@@ -256,6 +285,8 @@ class PipelineRunner:
     def finish(self, run_id: int) -> None:
         with self.deps.uow() as uow:
             run = uow.runs.get(run_id)
+            if run.status not in ACTIVE:  # stopped: it did not finish
+                return
             uow.runs.set_status(run_id, RunStatus.DONE)
             uow.commit()
         self.lock.release(self.lock_key(run), str(run_id))
@@ -277,7 +308,12 @@ class InlineDispatcher:
                         self.runner.merge(run_id, s.name, [self.runner.run_item(run_id, s.name, i) for i in items])
                 else:
                     self.runner.run_step(run_id, s.name)
+            except Stopped:
+                return
             except Exception as e:
                 self.runner.fail(run_id, s.name, str(e), "inline", {"run_id": run_id, "step": s.name})
                 return
         self.runner.finish(run_id)
+
+    def stop(self, idem_key: str, steps: list[str]) -> None:
+        pass  # inline steps run to the end of the call

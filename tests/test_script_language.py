@@ -73,7 +73,7 @@ def test_an_english_script_is_regenerated_in_hindi_when_hindi_is_picked(containe
     client, token = logged_in(db_url, user_id)
     page = client.get(f"/assets/{script.id}").text
     assert 'action="/assets/' + str(script.id) + '/regenerate"' in page and '<option value="en" selected>' in page
-    assert ">Rent trick</textarea>" in page and ">One point</textarea>" in page  # the prompt, ready to edit
+    assert '<p class="brief">One point</p>' in page and ">One point</textarea>" in page  # the brief, ready to edit
     r = client.post(
         f"/assets/{script.id}/regenerate",
         data={

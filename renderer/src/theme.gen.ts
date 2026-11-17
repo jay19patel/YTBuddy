@@ -92,7 +92,9 @@ export const THEME = {
   "layout": {
     "safe": 0.05,
     "gap": 0.018,
-    "stickerSize": 0.15
+    "stickerSize": 0.15,
+    "bgImageTint": 0.55,
+    "bgImageZoom": 0.08
   },
   "motion": {
     "wordIn": {
@@ -138,6 +140,11 @@ export const THEME = {
     "bob": {
       "amplitude": 6,
       "period": 90
+    },
+    "talk": 4,
+    "faceSwap": {
+      "frames": 8,
+      "squash": 0.94
     },
     "window": {
       "frames": 10,

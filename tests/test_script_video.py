@@ -1,5 +1,8 @@
 """Script to video: Piper voice-over (faked here) and a white screen with black subtitles."""
 
+import json
+from datetime import timedelta
+
 from tests.test_characterization import logged_in
 from ytstudio.application.steps_video import spoken_lines
 from ytstudio.domain.models import RunStatus
@@ -14,6 +17,14 @@ def scripts(container, user_and_channel):
     short_script, other_short = [a for a in made if a.data["format"] == "short"][:2]
     container.other_short = other_short
     return user_id, long_script, short_script
+
+
+def in_hd(container, user_id, script_id):
+    """Make the video (a quick draft), then the same video in HD, as the creator would before uploading."""
+    container.review.make_video(user_id, script_id)
+    with container.uow() as uow:
+        n = uow.assets.get(script_id, user_id).data["video_n"]
+    container.review.make_hd(user_id, script_id, n)
 
 
 def test_only_spoken_words_are_read_in_sentences_with_longer_pauses_between_sections():
@@ -54,22 +65,53 @@ def test_a_short_gets_a_vertical_video_and_a_long_video_a_wide_one(container, us
         assert a.data["video_seconds"] > 0
 
 
-def test_making_the_video_again_replaces_the_old_files_and_deleting_the_script_removes_them(
-    container, user_and_channel, db_url
-):
+def test_each_video_is_a_version_drawn_as_a_draft_then_the_same_video_in_hd(container, user_and_channel, db_url, yt):
     user_id, _, short_script = scripts(container, user_and_channel)
-    container.review.make_video(user_id, short_script.id)
-    with container.uow() as uow:
-        first = uow.assets.get(short_script.id, user_id).data
-    container.clock.advance(5) if hasattr(container.clock, "advance") else None
-    container.review.make_video(user_id, short_script.id)
-    with container.uow() as uow:
-        second = uow.assets.get(short_script.id, user_id).data
-    if second["video_key"] != first["video_key"]:
-        assert not container.storage.exists(first["video_key"])
+    media = container.media["media"]
     client, token = logged_in(db_url, user_id)
+
+    def data():
+        with container.uow() as uow:
+            return uow.assets.get(short_script.id, user_id).data
+
+    container.review.make_video(user_id, short_script.id)
+    one = data()
+    assert media.drafts[-1] and one["video_n"] == 1 and not one["video_hd"]  # a quick draft first
+    r = client.post(f"/assets/{short_script.id}/upload", data={"csrf": token, "privacy": "private"})
+    assert "Make it in HD first" in r.text and not yt.uploaded  # a draft is never uploaded
+
+    container.clock.t += timedelta(seconds=5)
+    container.review.make_video(user_id, short_script.id)
+    two = data()
+    assert two["video_n"] == 2 and [v["n"] for v in two["videos"]] == [1, 2]
+    assert container.storage.exists(one["video_key"])  # the first version is kept
+
+    r = client.post(f"/scripts/{short_script.id}/videos/1/use", data={"csrf": token}, follow_redirects=False)
+    assert r.headers["location"] == f"/assets/{short_script.id}?m=edited#video"
+    assert data()["video_key"] == one["video_key"] and len(media.videos) == 2  # nothing was made again
+
+    r = client.post(f"/scripts/{short_script.id}/videos/1/hd", data={"csrf": token}, follow_redirects=False)
+    assert "m=started" in r.headers["location"]
+    hd = data()
+    timeline, voice, draft = media.redrawn[-1]
+    stored = json.loads(container.storage.get(one["videos"][0]["timeline_key"]).read_text())
+    assert timeline == stored == {"timeline": media.videos[0][0]} and not draft  # version 1's own plan
+    assert voice == container.storage.get(one["audio_key"]).read_bytes()  # its own voice: the same video, sharper
+    assert hd["video_n"] == 1 and hd["video_hd"] and hd["video_key"] != one["video_key"]
+    assert hd["videos"][0]["draft_key"] == one["video_key"]  # the draft stays with its version
+    page = client.get(f"/assets/{short_script.id}").text
+    assert "Version 2" in page and "Showing" in page and "Download HD (MP4)" in page
+
+    for _ in range(5):  # only the newest few versions are kept, with their files
+        container.clock.t += timedelta(seconds=5)
+        container.review.make_video(user_id, short_script.id)
+    last = data()
+    assert [v["n"] for v in last["videos"]] == [3, 4, 5, 6, 7]
+    assert not container.storage.exists(hd["video_key"]) and not container.storage.exists(one["audio_key"])
+
     client.post(f"/assets/{short_script.id}/delete", data={"csrf": token})
-    assert not container.storage.exists(second["video_key"]) and not container.storage.exists(second["audio_key"])
+    for v in last["videos"]:
+        assert not container.storage.exists(v["draft_key"]) and not container.storage.exists(v["timeline_key"])
 
 
 def test_script_page_has_the_generate_button_the_player(container, user_and_channel, db_url):
@@ -86,7 +128,8 @@ def test_script_page_has_the_generate_button_the_player(container, user_and_chan
     )
     assert r.status_code == 303 and "m=started" in r.headers["location"]
     after = client.get(f"/assets/{long_script.id}").text
-    assert "<video" in after and "Download video (MP4)" in after and "Make the video again" in after
+    assert "<video" in after and "Download draft (MP4)" in after and "Make a new version" in after
+    assert "Looks good: make it in HD" in after
     assert "Last voice: Fake voice" in after
     assert '<option value="chatterbox-en" selected>' in after  # the voice used last stays picked
     assert f"/files/asset/{long_script.id}/audio?download=1" in after
@@ -102,8 +145,8 @@ def test_a_long_video_made_from_a_script_uploads_with_its_package_title_and_seo(
     user_id, long_script, short_script = scripts(container, user_and_channel)
     client, token = logged_in(db_url, user_id)
     before = client.get(f"/assets/{long_script.id}").text
-    assert "Upload to YouTube</button>" not in before and "After the video is made" in before  # no video yet
-    container.review.make_video(user_id, long_script.id)
+    assert "Upload to YouTube</button>" not in before and "Generate the video first" in before  # no video yet
+    in_hd(container, user_id, long_script.id)
     page = client.get(f"/assets/{long_script.id}").text
     assert f'action="/assets/{long_script.id}/upload"' in page and "Upload to YouTube" in page
     assert 'value="I tracked rent for 90 days"' in page  # the package's best title
@@ -139,7 +182,7 @@ def test_a_long_video_made_from_a_script_uploads_with_its_package_title_and_seo(
 
 def test_a_short_script_video_uploads_as_a_short(container, user_and_channel, db_url, yt):
     user_id, _, short_script = scripts(container, user_and_channel)
-    container.review.make_video(user_id, short_script.id)
+    in_hd(container, user_id, short_script.id)
     client, token = logged_in(db_url, user_id)
     page = client.get(f"/assets/{short_script.id}").text
     assert 'value="Stop overpaying rent"' in page and "One trick that cut my rent." in page and 'value="Shorts"' in page
@@ -154,7 +197,7 @@ def test_the_video_comes_with_a_thumbnail_that_can_be_made_again_alone_and_goes_
     container, user_and_channel, db_url, yt
 ):
     user_id, long_script, _ = scripts(container, user_and_channel)
-    container.review.make_video(user_id, long_script.id)
+    in_hd(container, user_id, long_script.id)
     with container.uow() as uow:
         first = uow.assets.get(long_script.id, user_id).data
     assert first["thumb_key"].startswith("thumbs/") and container.storage.exists(first["thumb_key"])
@@ -188,3 +231,74 @@ def test_the_video_comes_with_a_thumbnail_that_can_be_made_again_alone_and_goes_
     assert "This thumbnail is on YouTube." in client.get(f"/assets/{long_script.id}").text
     client.post(f"/assets/{long_script.id}/delete", data={"csrf": token})
     assert not container.storage.exists(second["thumb_key"])
+
+
+def test_every_script_shows_where_it_is_on_the_way_to_youtube_and_the_one_next_step(
+    container, user_and_channel, db_url
+):
+    user_id, long_script, _ = scripts(container, user_and_channel)
+    client, _ = logged_in(db_url, user_id)
+
+    def card(**data):
+        with container.uow() as uow:
+            a = uow.assets.get(long_script.id, user_id)
+            a.data = a.data | data
+            uow.assets.update(a)
+            uow.commit()
+        page = client.get("/scripts?format=long").text
+        return page[page.index(f'href="/assets/{long_script.id}"') :].split("</article>")[0]
+
+    first = card()
+    assert 'aria-current="step"><i data-lucide="clapperboard"></i><span>Video' in first
+    assert f'action="/scripts/{long_script.id}/video"' in first and "Generate video" in first
+    page = client.get(f"/assets/{long_script.id}").text
+    assert 'id="video"' in page and 'id="thumbnail"' in page and 'class="journey"' in page
+    assert "Make thumbnail" in card(video_key="v.mp4", video_seconds=60)
+    assert f'href="/assets/{long_script.id}#upload">Upload to YouTube' in card(thumb_key="t.jpg")
+    assert "https://youtu.be/abc" in card(youtube_id="abc") and "aria-current" not in card()
+
+
+def test_your_youtube_details_hook_and_media_survive_a_new_script(container, user_and_channel, db_url, yt):
+    user_id, long_script, _ = scripts(container, user_and_channel)
+    client, token = logged_in(db_url, user_id)
+    in_hd(container, user_id, long_script.id)
+
+    r = client.post(
+        f"/scripts/{long_script.id}/details",
+        data={"csrf": token, "title": " My  title ", "description": "Mine", "tags": "x, y", "hashtags": "rent, #tips"},
+        follow_redirects=False,
+    )
+    assert r.headers["location"] == f"/assets/{long_script.id}?m=edited#details"  # the query before the fragment
+    page = client.get(f"/assets/{long_script.id}").text
+    assert 'id="yt-title" name="title" value="My title"' in page and 'value="x, y"' in page
+    assert '<input type="hidden" name="title" value="My title">' in page  # the upload sends what you saved
+
+    hook = long_script.data["hooks"][-1]["hook"]
+    client.post(f"/assets/{long_script.id}/edit", data={"csrf": token, "section_0": hook})
+    with container.uow() as uow:
+        a = uow.assets.get(long_script.id, user_id)
+    assert a.data["script"]["sections"][0]["spoken"] == hook and a.data["video_outdated"]  # the video says old words
+    assert "The script changed after this video was made" in client.get(f"/assets/{long_script.id}").text
+
+    container.review.regenerate(user_id, long_script.id)
+    with container.uow() as uow:
+        again = uow.assets.get(long_script.id, user_id)
+    assert again.data["history"] and again.data["yt"]["title"] == "My title"  # your text is kept
+    assert again.data["video_key"] == a.data["video_key"] and again.data["thumb_key"] == a.data["thumb_key"]
+    assert again.data["video_outdated"] and again.data["idea"] == a.data["idea"]  # the brief as you wrote it
+
+    container.clock.t += timedelta(seconds=5)  # a new run, not the same one again
+    container.review.make_video(user_id, long_script.id)
+    with container.uow() as uow:
+        assert not uow.assets.get(long_script.id, user_id).data["video_outdated"]
+
+
+def test_a_few_lines_are_enough_to_create_a_video(container, user_and_channel, db_url):
+    user_id, _ = user_and_channel
+    client, token = logged_in(db_url, user_id)
+    about = "Python se video editing automate kaise kare. Beginners ke liye, FFmpeg ke saath."
+    r = client.post("/scripts/new", data={"csrf": token, "details": about, "format": "short"}, follow_redirects=False)
+    assert r.status_code == 303
+    with container.uow() as uow:
+        idea = uow.assets.get(int(r.headers["location"].split("/")[3].split("?")[0]), user_id)
+    assert idea.title == about and idea.data["angle"] == about  # its start names the idea

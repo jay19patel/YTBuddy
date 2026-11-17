@@ -8,7 +8,7 @@ from datetime import UTC, datetime, time, timedelta
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import FileResponse, JSONResponse, Response
 
@@ -62,21 +62,34 @@ def jobs_status() -> list[dict[str, Any]]:
 
 
 @router.get("/jobs")
-def jobs(p: Page = Depends(page)) -> Response:
+def jobs(request: Request, p: Page = Depends(page)) -> Response:
+    """What is running, what finished and what failed, for this channel: stop, retry, open what it made."""
     q, c = queries(), get_container()
-    channel_id: str | None = p.active["id"] if p.active else None  # runs and dead letters of this channel only
+    channel_id: str | None = p.active["id"] if p.active else None
+    total = q.run_count(p.user.id, channel_id)
+    pages = max(1, -(-total // RUNS_PER_PAGE))
+    raw = request.query_params.get("page", "1")
+    at = min(pages, max(1, int(raw) if raw.isdigit() else 1))
     return render(
         p,
         "jobs.html",
-        runs=q.runs(p.user.id, channel_id),
-        dead=q.dead_letters(p.user.id, channel_id),
-        costs=q.llm_costs(p.user.id),
-        budget=p.user.daily_budget_usd,
-        quota_used=c.quota.used_today(),
-        quota_limit=get_settings().quota_daily_limit,
+        runs=q.runs(p.user.id, channel_id, RUNS_PER_PAGE, (at - 1) * RUNS_PER_PAGE),
+        page_at=at,
+        pages=pages,
+        total=total,
         jobs_status=jobs_status(),
         health=c.health(),
     )
+
+
+RUNS_PER_PAGE = 15
+
+
+@router.post("/jobs/runs/{run_id}/stop")
+def stop_run(run_id: int, next: str = Form("/jobs"), p: Page = Depends(csrf)) -> Response:
+    stopped = get_container().runner.stop(run_id, p.user.id)
+    dest = next if next.startswith("/") and not next.startswith("//") else "/jobs"
+    return back(dest, "stopped" if stopped else "not_running")
 
 
 @router.post("/jobs/runs/{run_id}/retry")
@@ -90,6 +103,9 @@ def run_status(run_id: int, p: Page = Depends(page)) -> Response:
     r = queries().run(p.user.id, run_id)
     if not r:
         raise HTTPException(404)
+    live = get_container().progress_of(run_id)  # what a long step is doing now: "frame 3,210 of 9,000"
+    for s in r["steps"]:
+        s["live"] = live.get(s["step"]) if s["status"] in ("running", "waiting") else None
     return JSONResponse(jsonable_encoder(r), headers={"Cache-Control": "no-store"})
 
 

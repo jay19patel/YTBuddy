@@ -111,12 +111,14 @@ class Queries:
             )
         return out
 
-    def runs(self, user_id: int, channel_id: str | None = None, limit: int = 50) -> list[dict[str, Any]]:
+    def runs(
+        self, user_id: int, channel_id: str | None = None, limit: int = 50, offset: int = 0
+    ) -> list[dict[str, Any]]:
         q = select(t.PipelineRun).where(t.PipelineRun.user_id == user_id)
         if channel_id:
             q = q.where(t.PipelineRun.channel_id == channel_id)
         with self._s() as s:
-            runs = list(s.exec(q.order_by(col(t.PipelineRun.id).desc()).limit(limit)))
+            runs = list(s.exec(q.order_by(col(t.PipelineRun.id).desc()).offset(offset).limit(limit)))
             steps = list(
                 s.exec(
                     select(t.StepRun).where(col(t.StepRun.run_id).in_([r.id for r in runs])).order_by(col(t.StepRun.id))
@@ -126,6 +128,13 @@ class Queries:
         for st in steps:
             by_run.setdefault(st.run_id, []).append({k: v for k, v in _row(st).items() if k != "output"})
         return [_row(r) | {"steps": by_run.get(r.id or 0, [])} for r in runs]
+
+    def run_count(self, user_id: int, channel_id: str | None = None) -> int:
+        q = select(func.count()).select_from(t.PipelineRun).where(t.PipelineRun.user_id == user_id)
+        if channel_id:
+            q = q.where(t.PipelineRun.channel_id == channel_id)
+        with self._s() as s:
+            return int(s.exec(q).one())
 
     def run_for_asset(self, user_id: int, asset: dict[str, Any]) -> dict[str, Any] | None:
         """The newest run that made this asset, regenerated it, or (for an idea) developed it into a script."""

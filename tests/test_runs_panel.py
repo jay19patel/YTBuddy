@@ -51,7 +51,7 @@ def test_idea_page_says_what_to_do_next_and_where_the_script_is(container, user_
     with container.uow() as uow:
         script = next(a for a in uow.assets.for_run(int(r.headers["location"].split("run=")[1])) if a.kind == "script")
     after = client.get(f"/assets/{idea.id}").text
-    assert "Script ready" in after and f'href="/assets/{script.id}">Open the script' in after
+    assert "Script ready" in after and f'href="/assets/{script.id}#video"' in after and "make the video" in after
     assert "Next step: write the script" not in after
     again = client.post(f"/ideas/{idea.id}/develop", data={"csrf": token}, follow_redirects=False)
     assert "m=done_already" in again.headers["location"]  # not "already ran today"

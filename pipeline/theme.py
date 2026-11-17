@@ -52,7 +52,8 @@ THEME: dict[str, object] = {
         "pill": 0.026,
         "verticalBoost": 1.3,  # 9:16 has twice the height: text can be bigger (fit still caps it)
     },
-    "layout": {"safe": 0.05, "gap": 0.018, "stickerSize": 0.15},
+    # bgImageTint: how much of the scene colour lies over a background picture, so text on it stays readable
+    "layout": {"safe": 0.05, "gap": 0.018, "stickerSize": 0.15, "bgImageTint": 0.55, "bgImageZoom": 0.08},
     # durations in frames at 30 fps (the renderer rescales for other rates)
     "motion": {
         "wordIn": {"frames": 6, "blur": 3, "y": 14},  # a light blur only: heavy blur reads as lag
@@ -65,6 +66,8 @@ THEME: dict[str, object] = {
         "stickerSpring": {"damping": 9, "stiffness": 170, "mass": 0.9},
         "float": {"amplitude": 4, "period": 60},
         "bob": {"amplitude": 6, "period": 90},
+        "talk": 4,  # frames per mouth open / closed while the presenter speaks
+        "faceSwap": {"frames": 8, "squash": 0.94},  # a new expression lands with a small squash
         "window": {"frames": 10, "scaleFrom": 0.95},
         "stagger": 8,
         "typingCps": 25,

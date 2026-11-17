@@ -4,6 +4,7 @@ from typing import Any
 
 import pytest
 
+from tests.test_characterization import logged_in
 from ytstudio.application.pipeline import REGISTRY, Context, Step, register
 from ytstudio.domain.errors import PermanentError
 from ytstudio.domain.events import BriefReady, JobFailed
@@ -177,3 +178,33 @@ def test_develop_and_regenerate(container, user_and_channel):
         updated = uow.assets.get(script.id, user_id)
     assert len(updated.data["history"]) == 1 and updated.status == "needs_review"
     assert container.deps.llm.calls[-1].regenerate is True  # bypasses the LLM cache
+
+
+def test_a_stopped_run_does_nothing_more_and_retry_carries_on(container, user_and_channel, db_url):
+    from ytstudio.application.pipeline import STOPPED, Stopped
+
+    user_id, channel = user_and_channel
+    idea = container.review.add_idea(user_id, channel, "Rent trick", "One point", format="long")
+    with container.uow() as uow:
+        run, _ = uow.runs.create(
+            user_id, channel, "develop", "k:stop", {"idea_asset_id": idea.id, "steps": ["write_script"]}
+        )
+        uow.runs.set_status(run.id, RunStatus.RUNNING)
+        uow.runs.start_step(run.id, "write_script")
+        uow.commit()
+    client, token = logged_in(db_url, user_id)
+    r = client.post(f"/jobs/runs/{run.id}/stop", data={"csrf": token}, follow_redirects=False)
+    assert r.headers["location"] == "/jobs?m=stopped"
+    with container.uow() as uow:
+        stopped = uow.runs.get(run.id)
+        assert stopped.status == RunStatus.FAILED
+        assert uow.runs.step_status(run.id, "write_script") == RunStatus.FAILED
+    with pytest.raises(Stopped):  # a task that arrives late (its worker restarted) does not run the step
+        container.runner.run_step(run.id, "write_script")
+    container.runner.finish(run.id)
+    with container.uow() as uow:
+        assert uow.runs.get(run.id).status == RunStatus.FAILED  # not marked done
+    again = client.post(f"/jobs/runs/{run.id}/stop", data={"csrf": token}, follow_redirects=False)
+    assert again.headers["location"] == "/jobs?m=not_running"
+    page = client.get("/jobs").text
+    assert STOPPED in page and f'action="/jobs/runs/{run.id}/retry"' in page and "LLM cost" not in page

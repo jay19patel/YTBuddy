@@ -43,6 +43,10 @@ steps = [
 [pipelines.script_video]
 steps = ["plan_storyboard", "plan_thumbnail", "speech_text", "narrate_script", "render_script_video", "draw_thumbnail"]
 
+# The same video in full quality: one version's own timeline and voice drawn again, nothing planned or said again.
+[pipelines.video_hd]
+steps = ["render_hd"]
+
 # Make only the thumbnail again, with your own text or instructions if you gave them.
 [pipelines.thumbnail]
 steps = ["plan_thumbnail", "draw_thumbnail"]

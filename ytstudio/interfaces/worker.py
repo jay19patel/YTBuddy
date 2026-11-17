@@ -20,6 +20,7 @@ from celery.exceptions import SoftTimeLimitExceeded
 from celery.schedules import crontab
 from celery.signals import beat_init, setup_logging, worker_shutting_down
 
+from ytstudio.application.pipeline import Stopped
 from ytstudio.config import get_settings
 from ytstudio.container import get_container
 from ytstudio.domain.errors import QuotaExceeded, TransientError
@@ -114,6 +115,9 @@ def step_errors(task: Task, run_id: int, step: str, queue: str) -> Iterator[None
             task.name,
             {"run_id": run_id, "step": step},
         )
+        raise
+    except Stopped:
+        log.info("run %s was stopped: %s not run", run_id, step)
         raise
     except SoftTimeLimitExceeded:
         runner.fail(run_id, step, "time limit exceeded", task.name, {"run_id": run_id, "step": step})

@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from ytstudio.application import thumbnails
+from ytstudio.application import thumbnails, video_versions
 from ytstudio.application.pipeline import PipelineRunner, StartResult
 from ytstudio.application.schemas import ChannelProfileOut, ChannelSetupOut, ThumbnailOut, UploadMetaOut
 from ytstudio.application.steps_daily import LANG_NAMES
@@ -399,6 +399,7 @@ EDITABLE = {
     "start",
     "end",
     "summary",
+    "yt",  # a script's YouTube title, description, tags and hashtags as you saved them
 }
 
 
@@ -421,12 +422,17 @@ class Review:
             a = uow.assets.get(asset_id, user_id)
             if a.kind not in ("idea", "script", "package", "seo"):
                 raise PermanentError(f"A {a.kind} cannot be deleted.")
-            files = [
+            files = {
                 k
                 for x in (a, *uow.assets.children(asset_id, user_id))
-                for k in (x.data.get("video_key"), x.data.get("audio_key"), x.data.get("thumb_key"))
+                for k in (
+                    x.data.get("video_key"),
+                    x.data.get("audio_key"),
+                    x.data.get("thumb_key"),
+                    *(f for v in video_versions.versions(x.data) for f in video_versions.files(v)),
+                )
                 if k
-            ]
+            }
             uow.assets.delete(asset_id, user_id)
             uow.commit()
         for key in files:  # the voice-over, video and thumbnail made from a deleted script go with it
@@ -439,6 +445,8 @@ class Review:
             raise PermanentError(f"fields not editable: {sorted(bad)}")
         with self.uow() as uow:
             a = uow.assets.get(asset_id, user_id)
+            if "script" in changes and a.data.get("video_key"):  # the video says the old words
+                changes = changes | {"video_outdated": True}
             a.data = a.data | changes
             a.title = str(changes.get("title", a.title))
             a.status = AssetStatus.NEEDS_REVIEW
@@ -516,6 +524,24 @@ class Review:
         key = f"{a.channel_id}:video:{a.id}:{int(self.clock.now().timestamp())}"
         return self.runner.start(user_id, a.channel_id, "script_video", key, inputs)
 
+    def make_hd(self, user_id: int, script_asset_id: int, n: int) -> StartResult:
+        """Draw version `n` of the script's video again in full quality, from its own timeline and voice."""
+        with self.uow() as uow:
+            a = uow.assets.get(script_asset_id, user_id)
+        v = video_versions.find(a.data, n)
+        if not v.get("timeline_key") and not v.get("hd_key"):
+            raise PermanentError("This version cannot be drawn again. Make the video again.")
+        key = f"{a.channel_id}:hd:{a.id}:{n}:{int(self.clock.now().timestamp())}"
+        return self.runner.start(user_id, a.channel_id, "video_hd", key, {"asset_id": a.id, "n": n})
+
+    def use_video(self, user_id: int, script_asset_id: int, n: int) -> None:
+        """Show (and upload) version `n` instead: nothing is made again."""
+        with self.uow() as uow:
+            a = uow.assets.get(script_asset_id, user_id)
+            a.data = a.data | video_versions.showing(a.data, video_versions.find(a.data, n))
+            uow.assets.update(a)
+            uow.commit()
+
     def make_thumbnail(self, user_id: int, script_asset_id: int, text: str = "", notes: str = "") -> StartResult:
         """Design and draw only the thumbnail again: with `text` exactly on it, following `notes` if given."""
         with self.uow() as uow:
@@ -572,6 +598,8 @@ class Shorts:
             raise PermanentError("Only a rendered Short, or a script with its video made, can be uploaded.")
         if a.data.get("youtube_id"):
             raise PermanentError(f"This video is already on YouTube: https://youtu.be/{a.data['youtube_id']}")
+        if a.kind == "script" and "videos" in a.data and not a.data.get("video_hd"):
+            raise PermanentError("This is the quick draft. Make it in HD first, then upload.")
         sent = self._send(
             user_id,
             a.channel_id,

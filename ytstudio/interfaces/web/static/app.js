@@ -44,7 +44,8 @@ document.querySelectorAll("[data-run]").forEach((box) => {
       const run = await r.json();
       box.querySelector("[data-run-status]").textContent = `${run.status} ${run.progress}`;
       const [done, total] = run.progress.split("/").map(Number);
-      box.querySelector("[data-run-bar]").style.width = `${Math.round((done / (total || 1)) * 100)}%`;
+      const share = run.steps.reduce((n, s) => n + (s.live ? s.live.share : 0), 0); // the running step's own progress
+      box.querySelector("[data-run-bar]").style.width = `${Math.round(((done + share) / (total || 1)) * 100)}%`;
       run.steps.forEach((s) => {
         const li = box.querySelector(`.step[data-step="${s.step}"]`);
         if (!li) return;
@@ -54,6 +55,20 @@ document.querySelectorAll("[data-run]").forEach((box) => {
         let err = li.querySelector(".err-text");
         if (s.error && !err) { err = document.createElement("p"); err.className = "err-text"; li.lastElementChild.append(err); }
         if (err) err.textContent = s.error || "";
+        let live = li.querySelector(".live");
+        if (s.live && !live) {
+          live = document.createElement("div");
+          live.className = "live";
+          live.innerHTML = '<span class="live-note"></span><span class="live-bar"><i></i></span>';
+          li.lastElementChild.append(live);
+        }
+        if (live) {
+          live.hidden = !s.live;
+          if (s.live) {
+            live.querySelector(".live-note").textContent = `${s.live.note} (${Math.round(s.live.share * 100)}%)`;
+            live.querySelector("i").style.width = `${Math.round(s.live.share * 100)}%`;
+          }
+        }
       });
       paint();
       if (["done", "failed", "skipped"].includes(run.status)) {

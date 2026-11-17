@@ -71,6 +71,17 @@ def extract_json(text: str) -> str:
     return text[start : end + 1] if start != -1 and end > start else text
 
 
+def parsed[M: BaseModel](schema: type[M], text: str) -> M:
+    """The reply as `schema`. A raw newline or tab inside a string, which models often write, is read as one; any
+    other broken JSON raises the ValidationError that triggers the repair call."""
+    raw = extract_json(text)
+    try:
+        data = json.loads(raw, strict=False)
+    except json.JSONDecodeError:
+        return schema.model_validate_json(raw)
+    return schema.model_validate(data)
+
+
 def schema_version(schema: type[BaseModel]) -> str:
     return str(getattr(schema, "VERSION", "1"))
 
@@ -142,7 +153,7 @@ class LiteLLMAdapter:
         self._check_budget(req)
         text = self._complete(eff, req.alias, messages, meta)
         try:
-            out = schema.model_validate_json(extract_json(text))
+            out = parsed(schema, text)
         except ValidationError as e:
             repair = [
                 *messages,
@@ -156,7 +167,7 @@ class LiteLLMAdapter:
             ]
             text = self._complete(eff, req.alias, repair, meta | {"step": f"{req.step}:repair"})
             try:
-                out = schema.model_validate_json(extract_json(text))
+                out = parsed(schema, text)
             except ValidationError as e2:
                 raise LLMOutputInvalid(
                     f"{req.template}: output failed {schema.__name__} after one repair: {str(e2)[:300]}"

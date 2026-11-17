@@ -54,7 +54,7 @@ class HooksOut(BaseModel):
 
 
 class ScriptSection(BaseModel):
-    heading: str
+    heading: str = Field("", description="A few words naming the section")  # only shown; models often leave it out
     spoken: str = Field(description="The exact words to say")
     on_screen_text: list[str] = Field(default_factory=list)
     beat: Literal["hook", "turn", "body", "pattern_interrupt", "retention_beat", "payoff", "outro"]
@@ -70,7 +70,7 @@ class ScriptOut(BaseModel):
 class ShortScriptOut(BaseModel):
     VERSION: ClassVar[str] = "3"
     hook: str = Field(description="The first spoken line, said in the first two seconds")
-    sections: list[ScriptSection] = Field(min_length=2, max_length=5)
+    sections: list[ScriptSection] = Field(min_length=2, max_length=7)  # the word count keeps it short
     title: str = Field(max_length=100)
     description: str = Field(description="Several short lines, no hashtags")
     tags: list[str] = Field(default_factory=list, max_length=15)
@@ -80,7 +80,10 @@ class ShortScriptOut(BaseModel):
 
 class StoryboardScene(BaseModel):
     sentences: list[int] = Field(min_length=1, description="Numbers of the sentences this scene says, in order")
-    bg: str | dict[str, str] = Field("black", description='A palette name, or {"kind": "diagonal", "color", "panel"}')
+    bg: str | dict[str, str] = Field(
+        "black",
+        description='A palette name, {"kind": "diagonal", "color", "panel"} or {"kind": "image", "image", "color"}',
+    )
     layout: Literal["left_text", "center_bracket", "text_plus_window", "text_plus_character", "split_panel"]
     bg_word: str | None = Field(None, description="One short keyword drawn huge behind the text")
     transition: Literal["cut", "diagonal_wipe", "split_slide", "crossfade"] = "cut"

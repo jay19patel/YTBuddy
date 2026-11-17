@@ -7,7 +7,7 @@ import pytest
 from pydantic import BaseModel
 
 from tests.fakes import DictCache, NoLimit
-from ytstudio.adapters.llm import LiteLLMAdapter, build_router, extract_json
+from ytstudio.adapters.llm import LiteLLMAdapter, build_router, extract_json, parsed
 from ytstudio.domain.errors import BudgetExceeded, LLMOutputInvalid, TransientError
 from ytstudio.domain.events import BudgetReached
 from ytstudio.domain.llm import EffectiveLLM
@@ -245,3 +245,15 @@ def test_free_models_cost_nothing_and_do_not_warn(adapter_factory, user_and_chan
     free = "bazaarlink/qwen/qwen3.7-flash:free"
     assert llm._cost(object(), "qwen/qwen3.7-flash:free", (1_000_000, 1_000_000), free) == 0.0
     assert "no price" not in caplog.text
+
+
+def test_a_raw_newline_inside_a_string_is_read_and_broken_json_still_fails():
+    from pydantic import BaseModel, ValidationError
+
+    class Out(BaseModel):
+        hook: str
+
+    assert parsed(Out, '{"hook": "line one\nline two"}').hook == "line one\nline two"  # a real newline in it
+    assert parsed(Out, '```json\n{"hook": "a\tb"}\n```').hook == "a\tb"
+    with pytest.raises(ValidationError):
+        parsed(Out, '{"hook": ')

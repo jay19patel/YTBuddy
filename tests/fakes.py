@@ -212,6 +212,8 @@ class FakeMedia:
         self.renders: list[tuple[float, float]] = []
         self.videos: list[tuple[int, bool, str]] = []
         self.stories: list[list[dict[str, Any]] | None] = []
+        self.drafts: list[bool] = []
+        self.redrawn: list[tuple[dict[str, Any], bytes, bool]] = []
 
     def duration(self, path: Path) -> float:
         return 600.0
@@ -233,18 +235,34 @@ class FakeMedia:
         vertical: bool,
         out: Path,
         story: list[dict[str, Any]] | None = None,
-    ) -> None:
+        draft: bool = False,
+        on_progress: Any = None,
+    ) -> dict[str, Any]:
         self.videos.append((len(units), vertical))
         self.stories.append(story)
+        self.drafts.append(draft)
+        if on_progress:
+            on_progress(50, 100)
         out.write_bytes(b"mp4")
+        return {"timeline": len(units)}
+
+    def render_timeline(
+        self, timeline: dict[str, Any], audio: Path, out: Path, draft: bool = False, on_progress: Any = None
+    ) -> None:
+        self.redrawn.append((timeline, audio.read_bytes(), draft))
+        out.write_bytes(b"hd mp4")
 
 
 class FakeNarrator:
     def __init__(self) -> None:
         self.spoken: list[tuple[list[tuple[str, float]], str]] = []
 
-    def speak(self, lines: list[tuple[str, float]], voice: str, out: Path) -> tuple[list[dict[str, Any]], str]:
+    def speak(
+        self, lines: list[tuple[str, float]], voice: str, out: Path, on_progress: Any = None
+    ) -> tuple[list[dict[str, Any]], str]:
         self.spoken.append((lines, voice))
+        if on_progress:
+            on_progress(len(lines), len(lines))
         out.write_bytes(b"wav")
         return [{"start": i * 2.0, "end": i * 2.0 + 1.5, "words": []} for i in range(len(lines))], "Fake voice"
 

@@ -152,7 +152,7 @@ def make(
         raise ValueError("no words were found in the audio")
     total = FFmpegMediaProcessor().duration(audio)
     story = story or video.auto_story(cfg, tokens, words, llm)
-    timeline = plan.plan(story, words, video_info(cfg, fmt), total)
+    timeline = plan.plan(story, words, video_info(cfg, fmt), total, cfg.assets)
     if until:
         timeline = cut(timeline, until)
 
@@ -272,7 +272,7 @@ def demo(cfg: Settings, fmt: str, out: Path, until: float | None, write_timeline
     total = 90.6
     words = fake_words(story, total)
     if write_timeline:
-        t = cut(plan.plan(story, words, video_info(cfg, "16x9"), total), 22)
+        t = cut(plan.plan(story, words, video_info(cfg, "16x9"), total, cfg.assets), 22)
         (DEMO / "timeline.json").write_text(t.model_dump_json(indent=1), encoding="utf-8")
         log.info("wrote demo/timeline.json (%d scenes, 0–22 s)", len(t.scenes))
         return

@@ -4,6 +4,7 @@ import logging
 import re
 import shutil
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
 
 log = logging.getLogger(__name__)
@@ -23,10 +24,15 @@ def preflight(renderer: Path) -> None:
         raise RenderError(f"the renderer's packages are missing: run `npm ci` in {renderer}")
 
 
-def render_cmd(composition: str, props: Path, out: Path, crf: int, concurrency: int | None = None) -> list[str]:
+def render_cmd(
+    composition: str, props: Path, out: Path, crf: int, concurrency: int | None = None, scale: float = 1.0
+) -> list[str]:
+    """`scale` below 1 draws a smaller, faster draft of the same video."""
     cmd = ["npx", "remotion", "render", ENTRY, composition, str(out), f"--props={props}",
            "--codec=h264", "--pixel-format=yuv420p", f"--crf={crf}", "--log=info"]  # fmt: skip
-    return cmd + ([f"--concurrency={concurrency}"] if concurrency else [])
+    return (
+        cmd + ([f"--concurrency={concurrency}"] if concurrency else []) + ([f"--scale={scale}"] if scale != 1 else [])
+    )
 
 
 def still_cmd(composition: str, props: Path | None, frame: int, out: Path) -> list[str]:
@@ -35,11 +41,12 @@ def still_cmd(composition: str, props: Path | None, frame: int, out: Path) -> li
     )
 
 
-def run(cmd: list[str], renderer: Path, timeout: int) -> None:
-    """Runs in the renderer folder, logging progress every 10 %. Remotion's last lines are kept for the error."""
+def run(cmd: list[str], renderer: Path, timeout: int, on_progress: Callable[[int, int], None] | None = None) -> None:
+    """Runs in the renderer folder, logging progress every 10 % and passing (frames drawn, frames) to `on_progress`
+    every 2 %. Remotion's last lines are kept for the error."""
     log.info("remotion: %s", " ".join(cmd[2:4]))
     tail: list[str] = []
-    shown = -10
+    shown, told = -10, -2
     try:
         with subprocess.Popen(cmd, cwd=renderer, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True) as p:
             assert p.stdout is not None
@@ -47,6 +54,9 @@ def run(cmd: list[str], renderer: Path, timeout: int) -> None:
                 tail = [*tail[-30:], line.rstrip()]
                 if m := PROGRESS.search(line):
                     pct = 100 * int(m.group(1)) // max(1, int(m.group(2)))
+                    if on_progress and pct >= told + 2:
+                        told = pct
+                        on_progress(int(m.group(1)), int(m.group(2)))
                     if pct >= shown + 10:
                         shown = pct
                         log.info("rendered %s%% (%s/%s frames)", pct, m.group(1), m.group(2))

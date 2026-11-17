@@ -64,9 +64,16 @@ class VideoInfo(Model):
 
 
 class Background(Model):
-    kind: Literal["color", "split", "diagonal"] = "color"
-    color: Color
+    kind: Literal["color", "split", "diagonal", "image"] = "color"
+    color: Color  # on an image: the tint laid over it, so the text stays readable
     panel: Color | None = None  # the second colour of a split or diagonal background
+    image: str | None = None  # a picture inside assets/ (backgrounds/office.jpg)
+
+    @model_validator(mode="after")
+    def _image(self) -> "Background":
+        if (self.kind == "image") != bool(self.image):
+            raise ValueError("an image background needs an image, and only an image background has one")
+        return self
 
 
 class Item(Model):
@@ -240,6 +247,12 @@ class Swatches(Base):
 
 class CharacterProps(Model):
     side: Literal["right", "left"] = "right"
+    who: str | None = None  # a folder in assets/characters; None: the first one
+    expression: str | None = None  # a picture in that folder; None: its neutral face
+    image: str | None = None  # the picture inside assets/, filled in by the planner; None: the brand character
+    talk_image: str | None = None  # the mouth-open picture, when there is one
+    talk: list[list[float]] = Field(default_factory=list)  # [start, end] of each word said while it is on screen
+    enter: bool = True  # False: it replaces the same presenter's previous face without walking in again
 
 
 class Character(Base):

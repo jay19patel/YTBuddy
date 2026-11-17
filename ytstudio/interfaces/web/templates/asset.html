@@ -6,11 +6,12 @@
 <header><h1>{{ a.title }}</h1><span class="sub">{{ a.kind }} · updated {{ a.updated_at | ago }}</span></header>
 {{ m.run_progress(run) }}
 <section class="panel">
-  <div class="section-head"><h2>Review</h2>{{ m.review_actions(a, "/assets/" ~ a.id) }}</div>
+  <div class="section-head"><h2>Review</h2>{{ m.review_actions(a, "/assets/" ~ a.id, a.kind != "script") }}</div>
 
   {% if a.kind == "idea" %}
     {% set fmt = d | asset_format %}
     <div class="chips">{{ m.chips(fmt, d | is_manual, d | script_lang(channel_language)) }}</div>
+    {{ m.journey(developed.script if developed.script else a) }}
     <dl class="kv">
       <dt>Angle</dt><dd>{{ d.angle }}</dd>
       <dt>Why now</dt><dd>{{ d.why_now }}{% for r in d.outlier_refs %} <a href="https://youtu.be/{{ r }}" target="_blank" rel="noopener">[{{ loop.index }}]</a>{% endfor %}</dd>
@@ -18,10 +19,10 @@
     </dl>
     {% if developed.script %}
       <div class="next">
-        <h3>Script ready</h3>
-        <p class="muted">Read it, edit what you want, then approve it. For the upload, the Publish page fills in the title, description and tags. Nothing is uploaded until you press the button there.</p>
+        <h3>Script ready. Next: make the video</h3>
+        <p class="muted">The video, its thumbnail and the YouTube upload are all on the script's page. Open it, read and edit the script if you want, then press Generate video. Nothing is uploaded until you press Upload there.</p>
         <div class="actions">
-          <a class="btn small" href="/assets/{{ developed.script.id }}">Open the script</a>
+          <a class="btn small" href="/assets/{{ developed.script.id }}#video"><i data-lucide="clapperboard"></i>Open the script and make the video</a>
           {% if developed.package %}<a class="copy" href="/assets/{{ developed.package.id }}">Titles and thumbnail text</a>{% endif %}
           {% if developed.seo %}<a class="copy" href="/assets/{{ developed.seo.id }}">Description and tags</a>{% endif %}
           {% if flags.publish %}<a class="copy" href="/publish">Go to Publish</a>{% endif %}
@@ -49,32 +50,139 @@
     </details>
 
   {% elif a.kind == "script" %}
+    {% set short = (d | asset_format) == "short" %}
+    {% set sections = d.script.sections if d.script else [] %}
     <div class="chips">{{ m.chips(d | asset_format, d | is_manual, script_lang) }}</div>
-    <div class="video-box">
-      {% if d.video_key %}
-        <video controls preload="metadata" class="{{ 'tall' if (d | asset_format) == 'short' else 'wide' }}" src="/files/asset/{{ a.id }}/video?v={{ d.video_made_at }}"></video>
+    {{ m.journey(a) }}
+
+    {# 1. What you asked for: it stays as you wrote it when the script is written again #}
+    <div class="video-box" id="brief">
+      <h3 class="!mt-0">Your brief</h3>
+      {% set brief = d.idea.angle if d.idea and d.idea.angle else (d.idea.title if d.idea else a.title) %}
+      <p class="brief">{{ brief }}</p>
+      <form method="post" action="/assets/{{ a.id }}/regenerate">
+        <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="next" value="/assets/{{ a.id }}">
         <div class="actions">
-          <a class="btn small" href="/files/asset/{{ a.id }}/video?download=1">Download video (MP4)</a>
+          <select name="language" aria-label="Write it in">{% for v, n in languages %}<option value="{{ v }}" {% if v == script_lang %}selected{% endif %}>{{ n }}</option>{% endfor %}</select>
+          <button class="btn small" type="submit" data-busy="Starting…"><i data-lucide="refresh-cw"></i>Write the script again</button>
+        </div>
+        {% if d.idea %}<details class="edit"><summary>Change the brief first</summary>
+          <textarea name="details" rows="4" maxlength="2000" aria-label="Brief">{{ d.idea.angle }}</textarea>
+          <p class="hint">Only what you type here changes; leave it as it is to keep your brief.</p>
+        </details>{% endif %}
+      </form>
+      <p class="hint">A new script keeps your brief, your YouTube details, the video and the thumbnail (make the video again to hear the new words). The old script is kept under Earlier versions.</p>
+    </div>
+
+    {# 2. The opening line: pick a hook, or write and score your own #}
+    {% if sections and sections[0].beat == "hook" and d.hooks %}
+    <div class="video-box" id="hook">
+      <h3 class="!mt-0">Hook <span class="muted">(the first line; score is a heuristic, not a prediction)</span></h3>
+      <form method="post" action="/assets/{{ a.id }}/edit">
+        <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="next" value="/assets/{{ a.id }}#hook">
+        <div class="choices">
+          {% for h in d.hooks %}
+          <label class="choice"><input type="radio" name="section_0" value="{{ h.hook }}" {% if h.hook | trim == sections[0].spoken | trim %}checked{% endif %}>
+            <span><span class="score">{{ h.panel_score }}</span> {{ h.hook }}<br><span class="muted">{{ h.formula }}; weakest {{ h.weakest | lower }}: {{ h.fix }}</span></span></label>
+          {% endfor %}
+        </div>
+        <button class="btn small" type="submit">Use the selected hook</button>
+      </form>
+      <form method="post" action="/assets/{{ a.id }}/edit" class="row">
+        <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="next" value="/assets/{{ a.id }}#hook">
+        <label class="field" for="try-hook">Or write your own</label>
+        <div class="row-inline"><input type="text" id="try-hook" name="section_0" data-hook-input required class="!w-auto flex-1 min-w-48" placeholder="Type an opening line">
+          <button class="copy" type="button" data-hook-score>Score</button><button class="btn small" type="submit">Use it</button></div>
+        <p class="hint" data-hook-result aria-live="polite"></p>
+      </form>
+    </div>
+    {% endif %}
+
+    {# 3. The script itself #}
+    <div class="video-box" id="script">
+      <h3 class="!mt-0">Script</h3>
+      <form method="post" action="/assets/{{ a.id }}/edit"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="next" value="/assets/{{ a.id }}#script">
+        {% for s in sections %}
+          <div class="script-section {{ s.beat }}">
+            <div class="beat">{{ s.beat | replace("_", " ") }}{% if s.heading %} · {{ s.heading }}{% endif %}</div>
+            <textarea name="section_{{ loop.index0 }}" rows="{{ [3, (s.spoken | length // 90) + 2] | max }}" class="spoken">{{ s.spoken }}</textarea>
+            {% if s.on_screen_text %}<p class="hint">On screen: {{ s.on_screen_text | join("; ") }}</p>{% endif %}
+          </div>
+        {% endfor %}
+        <div class="actions"><button class="btn small">Save script</button><button class="copy" type="button" data-copy-target="#sp-all">Copy the script</button></div>
+      </form>
+      <pre id="sp-all" hidden>{% for x in sections %}{{ x.spoken }}
+{% endfor %}</pre>
+    </div>
+
+    {# 4. What YouTube shows: written for the video, yours to change #}
+    {% if prefill %}
+    <div class="video-box" id="details">
+      <h3 class="!mt-0">YouTube details</h3>
+      <form method="post" action="/scripts/{{ a.id }}/details">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <div class="row"><label class="field" for="yt-title">Title <span class="muted">({{ prefill.title | length }}/100)</span></label>
+          <input type="text" id="yt-title" name="title" value="{{ prefill.title }}" maxlength="100" required>
+          {% if title_options %}<p class="hint">Other titles written for it:
+            {% for t in title_options %}<button class="copy" type="button" data-copy="{{ t }}">{{ t }}</button>{% endfor %} (click to copy, then paste above)</p>{% endif %}</div>
+        <div class="row"><label class="field" for="yt-desc">Description</label><textarea id="yt-desc" name="description" rows="7">{{ prefill.description }}</textarea>{{ m.upload_hints(short) }}</div>
+        <div class="row"><label class="field" for="yt-tags">Tags</label><input type="text" id="yt-tags" name="tags" value="{{ prefill.tags }}"><p class="hint">Separate with commas.</p></div>
+        <div class="row"><label class="field" for="yt-hash">Hashtags</label><input type="text" id="yt-hash" name="hashtags" value="{{ prefill.hashtags }}" placeholder="#python #coding"><p class="hint">3 to 5. The first three show above the title.{% if short %} #Shorts is added when it is uploaded.{% endif %}</p></div>
+        <div class="actions"><button class="btn small" type="submit">Save details</button>{% if d.yt %}<span class="hint !mt-0">Saved. Writing the script again keeps these.</span>{% endif %}</div>
+      </form>
+    </div>
+    {% endif %}
+
+    {# 5. The video: a quick draft first, the same video in HD on request, earlier versions kept #}
+    {% set vs = d | video_versions %}
+    <div class="video-box" id="video">
+      <h3 class="!mt-0">Video
+        {% if d.video_key %}<span class="chip {{ 'auto' if d.video_hd else 'manual' }}">{{ "HD" if d.video_hd else "Draft (lower quality)" }}</span>
+        {% if vs | length > 1 %}<span class="muted">version {{ d.video_n }}</span>{% endif %}{% endif %}</h3>
+      {% if d.video_key %}
+        {% if d.video_outdated %}<p class="err-text">The script changed after this video was made. Make the video again so it says the new words.</p>{% endif %}
+        <video controls preload="metadata" class="{{ 'tall' if short else 'wide' }}" src="/files/asset/{{ a.id }}/video?v={{ d.video_made_at }}"></video>
+        <div class="actions">
+          {% if not d.video_hd %}
+            <form method="post" action="/scripts/{{ a.id }}/videos/{{ d.video_n }}/hd"><input type="hidden" name="csrf" value="{{ csrf }}">
+              <button class="btn" type="submit" data-busy="Starting…"><i data-lucide="sparkles"></i>Looks good: make it in HD</button></form>
+          {% endif %}
+          <a class="copy" href="/files/asset/{{ a.id }}/video?download=1">Download {{ "HD" if d.video_hd else "draft" }} (MP4)</a>
           <a class="copy" href="/files/asset/{{ a.id }}/audio?download=1">Download voice (MP3)</a>
           <span class="hint !mt-0">{{ d.video_seconds | round | int }} seconds</span>
         </div>
+        {% if not d.video_hd %}<p class="hint">This is a quick draft to check the video. HD draws exactly this video again, the same scenes, voice and timing, only sharper. It takes longer than the draft.</p>{% endif %}
       {% endif %}
       <form method="post" action="/scripts/{{ a.id }}/video" class="actions">
         <input type="hidden" name="csrf" value="{{ csrf }}">
         <select name="voice" aria-label="Voice"><option value="">Voice: automatic ({{ auto_voice }})</option>{% for v in script_voices %}<option value="{{ v.id }}"{% if v.id == d.video_voice %} selected{% endif %}>{{ v.label }}</option>{% endfor %}</select>
-        <button class="btn" type="submit" data-busy="Starting…"><i data-lucide="clapperboard"></i>{{ "Make the video again" if d.video_key else "Generate video" }}</button>
+        <button class="{{ 'copy' if d.video_key else 'btn' }}" type="submit" data-busy="Starting…"><i data-lucide="clapperboard"></i>{{ "Make a new version" if d.video_key else "Generate video" }}</button>
       </form>
-      {% if not d.video_key and flags.publish %}<p class="hint">After the video is made, the Upload to YouTube button appears here.</p>{% endif %}
-      {% if d.video_key %}
-        {% if d.youtube_id %}{{ m.uploaded_box(d) }}
-        {% elif flags.publish and prefill %}{{ m.upload_form(a.id, prefill.title, prefill.description, prefill.tags, tz, (d | asset_format) == "short", "/assets/" ~ a.id, prefill.hashtags, d.thumb_key) }}{% endif %}
+      <p class="hint">A natural voice reads the script ({{ script_lang | language_name }}) and every word appears on screen as it is said, with scenes, stickers, the presenter and your brand ({{ "vertical, for a Short" if short else "widescreen, for a long video" }}). You get a quick draft first. A new version is planned and voiced afresh; this one stays below. {% if d.video_engine %}Last voice: {{ d.video_engine }}. {% endif %}Nothing is uploaded.</p>
+      {% if vs | length > 1 %}
+      <h4>Versions</h4>
+      <ol class="versions">
+        {% for v in vs | reverse %}
+        <li{% if v.n == d.video_n %} aria-current="true"{% endif %}>
+          <span><strong>Version {{ v.n }}</strong> <span class="chip {{ 'auto' if v.hd_key else 'manual' }}">{{ "HD" if v.hd_key else "Draft" }}</span>
+            <span class="muted">{{ v.made_at | ago if v.made_at else "" }}{% if v.seconds %} · {{ v.seconds | round | int }} s{% endif %}{% if v.engine %} · {{ v.engine }}{% endif %}</span></span>
+          <span class="actions">
+            {% if v.n == d.video_n %}<span class="hint !mt-0">Showing</span>
+            {% else %}{{ m.post("/scripts/" ~ a.id ~ "/videos/" ~ v.n ~ "/use", "Show this one", "copy") }}{% endif %}
+            {% if not v.hd_key and v.timeline_key %}{{ m.post("/scripts/" ~ a.id ~ "/videos/" ~ v.n ~ "/hd", "Make HD", "copy") }}{% endif %}
+          </span>
+        </li>
+        {% endfor %}
+      </ol>
+      <p class="hint">The newest 5 versions are kept. Going back to one does not make anything again.</p>
       {% endif %}
-      <p class="hint">A natural neural voice reads the script; the voices listed match its language ({{ script_lang | language_name }}), and automatic picks the best one. The video is planned from it automatically: bold colour scenes, every word on screen the moment it is said, 3D stickers and your brand ({{ "vertical, for a Short" if (d | asset_format) == "short" else "widescreen, for a long video" }}). Takes a minute or two. {% if d.video_engine %}Last voice: {{ d.video_engine }}. {% endif %}Nothing is uploaded.</p>
     </div>
-    <div class="video-box">
+
+    {# 6. The thumbnail #}
+    <div class="video-box" id="thumbnail">
       <h3 class="!mt-0">Thumbnail</h3>
       {% if d.thumb_key %}
-        <img class="thumb {{ 'tall' if (d | asset_format) == 'short' else 'wide' }}" src="/files/asset/{{ a.id }}/thumbnail?v={{ d.thumb_made_at }}" alt="Thumbnail: {{ d.thumb.text }}">
+        <img class="thumb {{ 'tall' if short else 'wide' }}" src="/files/asset/{{ a.id }}/thumbnail?v={{ d.thumb_made_at }}" alt="Thumbnail: {{ d.thumb.text if d.thumb else '' }}">
         <div class="actions">
           <a class="btn small" href="/files/asset/{{ a.id }}/thumbnail?download=1">Download thumbnail (JPG)</a>
           {% if d.youtube_id and flags.publish %}
@@ -84,37 +192,28 @@
         </div>
         {% if d.thumb_error %}<p class="err-text">YouTube did not take the thumbnail: {{ d.thumb_error }} Custom thumbnails need a verified channel (youtube.com/verify). Download it and set it in YouTube Studio, or verify and press Set this thumbnail on YouTube.</p>{% endif %}
       {% endif %}
+      <details class="edit" {% if not d.thumb_key %}open{% endif %}><summary>{{ "Make a new thumbnail" if d.thumb_key else "Make the thumbnail" }}</summary>
       <form method="post" action="/scripts/{{ a.id }}/thumbnail">
         <input type="hidden" name="csrf" value="{{ csrf }}">
         <label class="field" for="thumb-text">Text on the thumbnail <span class="muted">(optional, 2 to 5 words; leave empty and the AI writes it)</span></label>
         <input type="text" id="thumb-text" name="text" maxlength="40" placeholder="{{ d.thumb.text if d.thumb else 'e.g. Stop doing this' }}">
         <label class="field" for="thumb-notes">Instructions for the design <span class="muted">(optional)</span></label>
         <textarea id="thumb-notes" name="notes" rows="2" maxlength="500" placeholder="e.g. red background, money sticker, make it feel urgent"></textarea>
-        <div class="actions"><button class="btn" type="submit" data-busy="Starting…"><i data-lucide="image"></i>{{ "Make a new thumbnail" if d.thumb_key else "Make thumbnail" }}</button></div>
+        <div class="actions"><button class="btn small" type="submit" data-busy="Starting…"><i data-lucide="image"></i>{{ "Make a new thumbnail" if d.thumb_key else "Make thumbnail" }}</button></div>
       </form>
-      <p class="hint">Made with the video: big words with one word boxed, a bold colour and a 3D sticker, in the video's look ({{ "1080x1920" if (d | asset_format) == "short" else "1280x720" }}). Making a new one redraws only the thumbnail; the video stays. It is set on YouTube when you upload.</p>
+      </details>
     </div>
-    {% if d.format == "short" %}
-      <h3>Title <button class="copy" type="button" data-copy="{{ d.title }}">Copy</button></h3><p>{{ d.title }}</p>
-      <h3>Description <button class="copy" type="button" data-copy="{{ d.description }}">Copy</button></h3><pre class="copyable">{{ d.description }}</pre>
+
+    {# 7. Upload #}
+    {% if flags.publish %}
+    <div class="video-box" id="upload">
+      <h3 class="!mt-0">Upload to YouTube</h3>
+      {% if d.youtube_id %}{{ m.uploaded_box(d) }}
+      {% elif not d.video_key %}<p class="muted">Generate the video first; the upload button appears here.</p>
+      {% elif not d.video_hd %}<p class="muted">The video shown is the quick draft. Make it in HD first (in Video above); then it uploads from here.</p>
+      {% elif prefill %}{{ m.upload_form(a.id, prefill.title, prefill.description, prefill.tags, tz, short, "/assets/" ~ a.id, prefill.hashtags, d.thumb_key, compact=True) }}{% endif %}
+    </div>
     {% endif %}
-    <h3>Hooks <span class="muted">(hook panel score: a heuristic from the vendored hookscore tool, not a prediction)</span></h3>
-    <ol>{% for h in d.hooks %}<li><span class="score">{{ h.panel_score }}</span> {{ h.hook }} <span class="muted">{{ h.formula }}; weakest {{ h.weakest | lower }}: {{ h.fix }}</span></li>{% endfor %}</ol>
-    <div class="row">
-      <label class="field" for="try-hook">Try your own hook</label>
-      <div class="row-inline"><input type="text" id="try-hook" data-hook-input class="!w-auto flex-1 min-w-48" placeholder="Type an opening line to score"><button class="btn small" type="button" data-hook-score>Score</button></div>
-      <p class="hint" data-hook-result aria-live="polite"></p>
-    </div>
-    <form method="post" action="/assets/{{ a.id }}/edit"><input type="hidden" name="csrf" value="{{ csrf }}">
-      {% for s in d.script.sections %}
-        <div class="script-section {{ s.beat }}">
-          <div class="beat">{{ s.beat | replace("_", " ") }} · {{ s.heading }}</div>
-          <textarea name="section_{{ loop.index0 }}" rows="{{ [3, (s.spoken | length // 90) + 2] | max }}" class="spoken">{{ s.spoken }}</textarea>
-          {% if s.on_screen_text %}<p class="hint">On screen: {{ s.on_screen_text | join("; ") }}</p>{% endif %}
-        </div>
-      {% endfor %}
-      <button class="btn quiet">Save script</button>
-    </form>
   {% elif a.kind == "package" %}
     {% for pair in d.pairs %}<div class="card"><h3>{{ pair.title }}</h3><p>Thumbnail text: <strong>{{ pair.thumbnail_text }}</strong></p><p class="muted">Lint {{ pair.lint.score }}/100{% for i in pair.lint.issues %} · {{ i.kind }}: {{ i.message }}{% endfor %}</p></div>{% endfor %}
     <h3>Thumbnail brief</h3><pre class="copyable">{{ d.thumbnail_brief }}</pre>

@@ -12,9 +12,10 @@ export type AvatarBadgeProps = {
 };
 
 export type Background = {
-  kind: "color" | "split" | "diagonal";
+  kind: "color" | "split" | "diagonal" | "image";
   color: string;
   panel: string | null;
+  image: string | null;
 };
 
 export type Brand = {
@@ -59,6 +60,12 @@ export type Character = {
 
 export type CharacterProps = {
   side: "right" | "left";
+  who: string | null;
+  expression: string | null;
+  image: string | null;
+  talk_image: string | null;
+  talk: number[][];
+  enter: boolean;
 };
 
 export type CommentBubbles = {

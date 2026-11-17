@@ -32,3 +32,9 @@ class CeleryDispatcher:
         ]
         sigs.append(self.sig("pipeline.finish", (run_id,), "io", f"{idem_key}:finish"))
         chain(*sigs).apply_async()
+
+    def stop(self, idem_key: str, steps: list[str]) -> None:
+        """The step working is killed, the queued ones are dropped. A task that comes back anyway (its worker was
+        restarted) finds the run stopped and does nothing."""
+        ids = [f"{idem_key}:{s}" for s in [*steps, "finish"]]
+        self.app.control.revoke(ids, terminate=True, signal="SIGTERM")

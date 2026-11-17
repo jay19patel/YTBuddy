@@ -21,6 +21,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
 from pipeline import markup, segment
+from pipeline.assets import backgrounds, face
 from pipeline.schema import TEXT_TYPES, Background, Element, Scene, Timeline, VideoInfo, Word, color
 from pipeline.theme import EMOJI
 from pipeline.transcribe import TimedWord, norm
@@ -37,6 +38,7 @@ TIME_KEYS = {"at", "highlight_at", "text_at", "tap_at", "approved_at", "cut_at",
 MODIFIERS = {"at", "until", "clear"}
 LEAD_IN = 0.12  # a scene cuts in just before its first word so the word's animation lands on the voice
 HOLD = 0.5  # how long the last frame holds after the final word
+SWAP = 0.2  # a presenter's old face stays under the new one this long, so a new expression never blinks
 ELEMENT = TypeAdapter(Element)
 TYPES = {get_args(c.model_fields["type"].annotation)[0] for c in get_args(get_args(Element)[0])}
 
@@ -92,7 +94,10 @@ def script_of(story: Story) -> list[markup.Token]:
     ]
 
 
-def plan(story: Story, words: list[TimedWord], video: VideoInfo, total_s: float) -> Timeline:
+def plan(
+    story: Story, words: list[TimedWord], video: VideoInfo, total_s: float, assets: Path | None = None
+) -> Timeline:
+    """With `assets`, the pictures the storyboard names (a presenter's face, a background) become their files."""
     tokens = script_of(story)
     if len(tokens) != len(words):
         raise ValueError(
@@ -115,7 +120,15 @@ def plan(story: Story, words: list[TimedWord], video: VideoInfo, total_s: float)
     end_all = max(total_s, starts[-1] + (last.duration or 0), (words[-1].end + HOLD) if words else 0)
     ends = [*starts[1:], end_all]
     scenes = [
-        _scene(f"s{k + 1:02d}", s, starts[k], ends[k], words[span.start : span.stop], tokens[span.start : span.stop])
+        _scene(
+            f"s{k + 1:02d}",
+            s,
+            starts[k],
+            ends[k],
+            words[span.start : span.stop],
+            tokens[span.start : span.stop],
+            assets,
+        )
         for k, (s, span) in enumerate(zip(story.scenes, spans, strict=True))
     ]
     video = video.model_copy(update={"duration_frames": max(1, round(end_all * video.fps))})
@@ -123,7 +136,13 @@ def plan(story: Story, words: list[TimedWord], video: VideoInfo, total_s: float)
 
 
 def _scene(
-    sid: str, s: StoryScene, start: float, end: float, words: list[TimedWord], tokens: list[markup.Token]
+    sid: str,
+    s: StoryScene,
+    start: float,
+    end: float,
+    words: list[TimedWord],
+    tokens: list[markup.Token],
+    assets: Path | None = None,
 ) -> Scene:
     def anchor(v: Any, base: float) -> float:
         if isinstance(v, int | float):
@@ -186,7 +205,7 @@ def _scene(
             v = e[k]
             props = dict(v) if isinstance(v, dict) else ({MAIN_PROP[k]: v} if k in MAIN_PROP and v is not None else {})
             props |= {x: y for x, y in e.items() if x not in MODIFIERS and x != k}
-            el = {"type": k, "props": resolve(props, at)}
+            el = {"type": k, "props": _cast(resolve(props, at), assets) if k == "character" else resolve(props, at)}
         el |= {"start": round(max(at, start), 3), "end": round(anchor(e["until"], at), 3) if "until" in e else None}
         if e.get("clear"):
             for prev in elements:
@@ -196,8 +215,18 @@ def _scene(
             for prev in elements:
                 if prev["type"] == "ui_window" and prev["end"] is None:
                     prev["end"] = el["start"]
+        if k == "character":  # a new expression: the same presenter changes face instead of walking in again
+            for prev in elements:
+                if prev["type"] == "character" and prev["end"] is None:
+                    prev["end"] = round(el["start"] + SWAP, 3)
+                    el["props"]["enter"] = False
         elements.append(el)
-    bg = s.bg if isinstance(s.bg, dict) else {"color": s.bg}
+    for el in elements:  # the presenter's mouth moves on every word said while it is on screen
+        if el["type"] == "character" and el["props"].get("talk_image"):
+            until = el["end"] if el["end"] is not None else end
+            said = [w for w in words if w.end > el["start"] and w.start < until]
+            el["props"]["talk"] = [[round(w.start, 3), round(w.end, 3)] for w in said]
+    bg = _backdrop(s.bg if isinstance(s.bg, dict) else {"color": s.bg}, assets)
     return Scene(
         id=sid,
         start=round(start, 3),
@@ -210,6 +239,28 @@ def _scene(
         watermark_pos=s.watermark,  # type: ignore[arg-type]
         elements=[ELEMENT.validate_python(x) for x in elements],
     )
+
+
+def _cast(props: dict[str, Any], assets: Path | None) -> dict[str, Any]:
+    """A presenter entry with its picture files. An LLM often writes the face where the side goes
+    ({"character": "shocked"}); that is read as the expression."""
+    p = dict(props)
+    if p.get("side") not in (None, "left", "right"):
+        p["expression"] = p.get("expression") or p["side"]
+        p["side"] = "right"
+    if assets is not None and (found := face(assets, p.get("who"), p.get("expression"))):
+        p["image"], p["talk_image"] = found
+    return p
+
+
+def _backdrop(bg: dict[str, Any], assets: Path | None) -> dict[str, Any]:
+    """An image background named by its file name ("office") becomes its file; an unknown one is a plain colour."""
+    if bg.get("kind") != "image" or assets is None:
+        return bg
+    name = str(bg.get("image") or "")
+    found = name if name and (assets / name).is_file() else backgrounds(assets).get(Path(name).stem)
+    bg = {"color": "black", **bg}  # the tint over the picture
+    return {**bg, "image": found} if found else {x: y for x, y in bg.items() if x != "image"} | {"kind": "color"}
 
 
 def _is_flow(el: dict[str, Any]) -> bool:
@@ -225,8 +276,9 @@ def missing_assets(t: Timeline, assets: Path) -> list[str]:
             if e.type == "sticker":
                 names.add(f"stickers/{p['name']}.png")
             names |= {f"stickers/{it['icon']}.png" for it in p.get("items", []) if it.get("icon")}
-            if p.get("image"):
-                names.add(p["image"])
+            names |= {p[k] for k in ("image", "talk_image") if p.get(k)}
+        if s.background.image:
+            names.add(s.background.image)
     names |= {x for x in (t.video.brand.avatar, t.video.brand.character) if x}
     names |= {f"stickers/{n}.png" for n in EMOJI.values()}
     return sorted(n for n in names if not (assets / n).exists())
@@ -540,8 +592,8 @@ def _renders(scene: StoryScene, video: VideoInfo, assets: Path) -> bool:
     toks = script_of(story)
     words = [TimedWord(word=t.text, start=i * DRY_WORD, end=(i + 0.9) * DRY_WORD) for i, t in enumerate(toks)]
     try:
-        t = plan(story, words, video, len(toks) * DRY_WORD + 1)
-        bare = plan(Story(scenes=[scene.model_copy(update={"content": [{"hero": "x"}]})]), words[:1], video, 1)
+        t = plan(story, words, video, len(toks) * DRY_WORD + 1, assets)
+        bare = plan(Story(scenes=[scene.model_copy(update={"content": [{"hero": "x"}]})]), words[:1], video, 1, assets)
     except (ValueError, TypeError, KeyError, AttributeError):
         return False
     return set(missing_assets(t, assets)) <= set(missing_assets(bare, assets))

@@ -149,8 +149,8 @@ def test_markers_round_trip_through_the_auto_storyboard():
 # ---------------------------------------------------------------- planner
 
 
-def story(content: list[dict]) -> plan.Story:
-    return plan.Story(scenes=[plan.StoryScene(bg="orange", content=content)])
+def story(content: list[dict], bg: str | dict = "orange") -> plan.Story:
+    return plan.Story(scenes=[plan.StoryScene(bg=bg, content=content)])
 
 
 def test_storyboard_words_appear_when_spoken_and_unspoken_entries_attach_to_the_next_line():
@@ -269,6 +269,9 @@ def test_remotion_commands():
     assert cmd[:5] == ["npx", "remotion", "render", "src/index.ts", "Main"]
     assert "--props=/t/p.json" in cmd and "--pixel-format=yuv420p" in cmd and "--concurrency=4" in cmd
     assert render.still_cmd("Demo", None, 30, Path("x.png"))[-1] == "--frame=30"
+    assert "--scale=0.5" in render.render_cmd("Main", Path("p"), Path("o"), 26, scale=0.5) and "--scale" not in "".join(
+        cmd
+    )
 
 
 @needs_ffmpeg
@@ -409,3 +412,70 @@ def test_sound_effects_take_turns_between_variants_and_skip_missing_files(tmp_pa
     t = plan.plan(s, evenly("a b c d"), video_info(Settings(), "16x9"), 3)
     cues = [(f.name, round(at, 2)) for f, at in mux.sfx_cues(t, tmp_path)]
     assert cues == [("pop.wav", 0.0), ("pop-2.wav", 0.4), ("pop.wav", 0.8), ("typing.wav", 0.8)]  # no whoosh file: none
+
+
+# ---------------------------------------------------------------- assets found by file name
+
+
+def drop(root: Path, *names: str) -> Path:
+    for n in names:
+        (root / n).parent.mkdir(parents=True, exist_ok=True)
+        (root / n).write_bytes(b"")
+    return root
+
+
+def test_assets_are_found_by_file_name_and_a_wrong_name_never_loses_the_presenter(tmp_path):
+    from pipeline import assets
+
+    drop(tmp_path, "characters/jay/happy.png", "characters/jay/happy-talk.png", "characters/jay/Shocked.webp")
+    drop(tmp_path, "characters/empty/.keep", "backgrounds/office.jpg", "backgrounds/notes.txt")
+    assert assets.faces(tmp_path) == {"jay": ["Shocked", "happy"]}  # a folder with no pictures is no presenter
+    assert assets.backgrounds(tmp_path) == {"office": "backgrounds/office.jpg"}
+    happy = ("characters/jay/happy.png", "characters/jay/happy-talk.png")
+    assert assets.face(tmp_path, None, "shocked") == ("characters/jay/Shocked.webp", None)
+    assert assets.face(tmp_path, "nobody", "angry") == happy  # unknown: the first presenter's default face
+    assert assets.face(tmp_path / "none", None, None) is None
+
+
+def test_a_presenter_changes_face_in_place_and_lip_syncs_and_a_picture_background_is_resolved(tmp_path):
+    drop(tmp_path, "characters/jay/neutral.png", "characters/jay/neutral-talk.png", "characters/jay/shocked.png")
+    drop(tmp_path, "backgrounds/office.jpg")
+    s = story(
+        [{"hero": "one two three"}, {"character": "right"}, {"character": "shocked", "at": "@three"}],
+        bg={"kind": "image", "image": "office"},
+    )
+    t = plan.plan(s, evenly("one two three"), video_info(Settings(), "16x9"), 2.0, tmp_path)
+    scene = t.scenes[0]
+    assert scene.background.image == "backgrounds/office.jpg" and scene.background.color == "black"
+    _, calm, shocked = scene.elements
+    assert calm.props.image == "characters/jay/neutral.png" and calm.props.enter
+    assert calm.props.talk == [[0.0, 0.32], [0.4, 0.72], [0.8, 1.12]]  # every word said while it is on screen
+    assert calm.end == round(shocked.start + plan.SWAP, 3)  # the old face stays under the new one
+    assert shocked.props.expression == "shocked" and shocked.props.side == "right" and not shocked.props.enter
+    assert shocked.props.talk_image is None and shocked.props.talk == []  # no mouth-open picture: no lip-sync
+    used = {"backgrounds/office.jpg", "characters/jay/neutral.png", "characters/jay/neutral-talk.png"}
+    assert used <= set(plan.missing_assets(t, tmp_path / "elsewhere"))  # checked before a render
+    assert not used & set(plan.missing_assets(t, tmp_path))
+
+    s = story([{"hero": "one"}], bg={"kind": "image", "image": "beach"})
+    t = plan.plan(s, evenly("one"), video_info(Settings(), "16x9"), 1.0, tmp_path)
+    assert t.scenes[0].background.kind == "color"  # an unknown picture is a plain colour, not a lost scene
+
+
+def test_a_sound_named_for_a_sticker_or_face_plays_instead_of_the_pop(tmp_path):
+    drop(tmp_path, "pop.wav", "fire.wav", "shocked.wav")
+    s = story([{"hero": "a b"}, {"sticker": "fire", "at": "@a"}, {"sticker": "key", "at": "@b"}])
+    s.scenes[0].content.append({"character": "right", "expression": "shocked", "at": "@b"})
+    t = plan.plan(s, evenly("a b"), video_info(Settings(), "16x9"), 2)
+    assert [f.name for f, _ in mux.sfx_cues(t, tmp_path)] == ["fire.wav", "pop.wav", "shocked.wav"]
+
+
+def test_each_video_gets_its_own_music_track_every_time(tmp_path):
+    from pipeline.video import music_bed
+
+    drop(tmp_path, "music/a.mp3", "music/b.mp3", "music/c.wav", "music/notes.txt")
+    cfg = Settings(assets=tmp_path)
+    picks = {music_bed(cfg, f"{n}.mp3") for n in range(20)}
+    assert picks == {tmp_path / "music" / x for x in ("a.mp3", "b.mp3", "c.wav")}
+    assert music_bed(cfg, "7.mp3") == music_bed(cfg, "7.mp3")
+    assert music_bed(Settings(assets=tmp_path / "none")) is None

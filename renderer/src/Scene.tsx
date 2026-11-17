@@ -1,5 +1,5 @@
 import {useMemo} from 'react';
-import {AbsoluteFill, useCurrentFrame, useVideoConfig} from 'remotion';
+import {AbsoluteFill, Img, staticFile, useCurrentFrame, useVideoConfig} from 'remotion';
 import {ApproveReject} from './components/ApproveReject';
 import {AvatarBadge} from './components/AvatarBadge';
 import {Brackets} from './components/Brackets';
@@ -24,7 +24,7 @@ import {TypingBox} from './components/TypingBox';
 import {Watermark} from './components/Watermark';
 import {fitScale, type Measurable} from './fit';
 import {regions} from './layout';
-import {cardSpring, exitFade} from './motion';
+import {cardSpring, exitFade, interp} from './motion';
 import {SceneCtx, type SceneInfo, useRel, useScene} from './SceneContext';
 import {colorOf, type Element, inkOn, luminance, mutedOn, SANS, THEME, useUnits} from './theme';
 import type {Brand, Scene, TextLine} from './types.gen';
@@ -61,7 +61,7 @@ export const SceneView: React.FC<{scene: Scene; brand: Brand; startFrame: number
 	return (
 		<SceneCtx.Provider value={info}>
 			<AbsoluteFill style={{background: bg, overflow: 'hidden'}}>
-				<Background scene={scene} panel={panel} />
+				<Background scene={scene} panel={panel} bg={bg} />
 				{scene.bg_word ? (
 					<OutlineBgWord
 						text={scene.bg_word}
@@ -80,12 +80,24 @@ export const SceneView: React.FC<{scene: Scene; brand: Brand; startFrame: number
 	);
 };
 
-const Background: React.FC<{scene: Scene; panel: string}> = ({scene, panel}) => {
+const Background: React.FC<{scene: Scene; panel: string; bg: string}> = ({scene, panel, bg}) => {
 	const frame = useCurrentFrame();
 	const {fps} = useVideoConfig();
 	const {width, height, vertical} = useUnits();
+	const {endFrame} = useScene();
 	const kind = scene.background.kind;
 	if (kind === 'color') return null;
+	if (kind === 'image' && scene.background.image) {
+		const L = THEME.layout;
+		// a slow push-in over the whole scene (Ken Burns), the scene colour laid over it so the text reads
+		const zoom = 1 + L.bgImageZoom * interp(frame, [0, Math.max(1, endFrame)], [0, 1]);
+		return (
+			<AbsoluteFill>
+				<Img src={staticFile(scene.background.image)} style={{width: '100%', height: '100%', objectFit: 'cover', transform: `scale(${zoom})`}} />
+				<AbsoluteFill style={{background: bg, opacity: L.bgImageTint}} />
+			</AbsoluteFill>
+		);
+	}
 	const s = cardSpring(frame, 0, fps);
 	if (kind === 'split') {
 		const p = regions('split_panel', width, height).panel!;
@@ -275,7 +287,7 @@ const Visual: React.FC<{el: Element; at: number}> = ({el, at}) => {
 		case 'dm_card':
 			return <DmCard props={el.props} at={at} />;
 		case 'character':
-			return <Character side={el.props.side} at={at} />;
+			return <Character props={el.props} at={at} />;
 		case 'avatar_badge':
 			return <AvatarBadge x={el.props.x} y={el.props.y} at={at} />;
 		case 'outro':

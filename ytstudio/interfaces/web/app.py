@@ -19,6 +19,7 @@ from fastapi.templating import Jinja2Templates
 
 from ytstudio.adapters.persistence.queries import Queries
 from ytstudio.adapters.persistence.web_sessions import WebSessions
+from ytstudio.application import video_versions
 from ytstudio.config import get_settings
 from ytstudio.container import get_container
 from ytstudio.domain.errors import DomainError, NotFound
@@ -40,6 +41,8 @@ MESSAGES = {
     "discarded": "Discarded.",
     "edited": "Saved. Status is back to needs review.",
     "retried": "Retrying from the failed step.",
+    "stopped": "Stopped. Retry carries on from the step it was on.",
+    "not_running": "That run had already ended.",
     "disconnected": "Channel removed and its Google access revoked.",
     "connected": "Channel connected. Its niche, language and region are being detected; confirm them below.",
     "already": "Already ran today for this channel; showing that run.",
@@ -56,9 +59,11 @@ class LoginRequired(Exception):
     pass
 
 
-def ago(dt: datetime | None) -> str:
+def ago(dt: datetime | str | None) -> str:
     if not dt:
         return "never"
+    if isinstance(dt, str):  # stored inside an asset's data as ISO text
+        dt = datetime.fromisoformat(dt)
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=UTC)
     secs = int((dt - datetime.now(UTC)).total_seconds())
@@ -92,11 +97,26 @@ def asset_format(d: dict[str, Any]) -> str:
     return format_of(d if "format" in d or "effort" in d else d.get("idea") or {})
 
 
+def stage(a: dict[str, Any]) -> int:
+    """How far an idea or script is on its way to YouTube: 1 needs its script, 2 its video, 3 its thumbnail, 4 the
+    upload, 5 it is on YouTube."""
+    d = a["data"]
+    if a["kind"] != "script":
+        return 1
+    if d.get("youtube_id"):
+        return 5
+    if not d.get("video_key") or ("videos" in d and not d.get("video_hd")):  # a draft is not the finished video
+        return 2
+    return 4 if d.get("thumb_key") else 3
+
+
 templates.env.globals["voices"] = lambda: VOICES
 templates.env.globals["languages"] = LANGUAGES
 templates.env.filters["language_name"] = lambda v: {"hi": "Hindi", "en": "English", "hinglish": "Hinglish"}.get(v, v)
 templates.env.filters["script_lang"] = script_language  # (data, channel's language) -> hi | en | hinglish
 templates.env.filters["asset_format"] = asset_format
+templates.env.filters["stage"] = stage
+templates.env.filters["video_versions"] = video_versions.versions
 templates.env.filters["is_manual"] = lambda d: (
     d.get("source") == "manual" or (d.get("idea") or {}).get("source") == "manual"
 )
@@ -185,7 +205,9 @@ def render(p: Page, name: str, status_code: int = 200, **ctx: Any) -> Response:
 
 def back(url: str, msg: str | None = None, run: int | None = None) -> RedirectResponse:
     params = "&".join(x for x in (f"m={msg}" if msg else "", f"run={run}" if run else "") if x)
-    return RedirectResponse(f"{url}?{params}" if params else url, status_code=303)
+    url, mark, fragment = url.partition("#")  # the query goes before "#details", or the browser drops it
+    sep = "&" if "?" in url else "?"  # "/scripts?format=short" keeps its tab
+    return RedirectResponse(f"{url}{sep if params else ''}{params}{mark}{fragment}", status_code=303)
 
 
 async def beat_watchdog() -> None:

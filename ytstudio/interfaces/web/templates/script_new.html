@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 {% import "macros.html" as m with context %}
-{% block title %}Create your own script · {{ current.title }}{% endblock %}
+{% block title %}Create a video · {{ current.title }}{% endblock %}
 {% block content %}
-<header><h1>Create your own script</h1><span class="sub">Your idea, your points: the assistant writes the script in your channel's voice.</span></header>
+<header><h1>Create a video</h1><span class="sub">Describe it in a few lines. You get the script, the hook, the YouTube title, description, tags and hashtags, then the video, its thumbnail and the upload, all on one page.</span></header>
 {% if idea %}
   <section class="panel">
     <h2>{{ idea.title }}</h2>
@@ -21,16 +21,15 @@
     <div class="modes" role="radiogroup" aria-label="Script language">
       {% for v, n in languages %}<input type="radio" id="l-{{ v }}" name="language" value="{{ v }}" {% if lang == v %}checked{% endif %}><label for="l-{{ v }}">{{ n }}</label>{% endfor %}
     </div>
-    <div class="row"><label class="field" for="i-title">Your idea or topic</label>
-      <input type="text" id="i-title" name="title" maxlength="200" required autofocus placeholder="For example: Python se video editing automate kaise kare"></div>
-    <div class="row"><label class="field" for="i-details">What you want in it (optional)</label>
-      <textarea id="i-details" name="details" rows="8" maxlength="2000" placeholder="Your points, your own work or results, steps to explain, examples, who it is for, the ending you want. Notes can be in any language; the script is written in the language you chose above."></textarea></div>
+    <div class="row"><label class="field" for="i-details">What is the video about?</label>
+      <textarea id="i-details" name="details" rows="5" maxlength="2000" required autofocus placeholder="A few lines are enough. For example: Python se video editing automate kaise kare. Beginners ke liye, FFmpeg aur MoviePy dikhana, ek real example ke saath. End mein free tools ki list."></textarea>
+      <p class="hint">Write it in any language. Add your own points, results or the ending you want if you have them; the rest is filled in for you.</p></div>
     <div class="actions">
-      <button class="btn" type="submit" data-busy="Starting…"><i data-lucide="pen-line"></i>Write my script</button>
+      <button class="btn" type="submit" data-busy="Starting…"><i data-lucide="sparkles"></i>Write everything</button>
       <a class="copy" href="/scripts?format={{ fmt }}">Cancel</a>
     </div>
   </form>
-  <p class="hint">It takes a few seconds for a Short and about a minute for a long video. Then you can edit it, approve it and press Generate video on the script; the voice is picked to match the language.</p>
+  <p class="hint">About a minute. Then the script page opens: read it, change what you want, and press Generate video. Your description is kept: writing the script again uses it as you wrote it.</p>
 </section>
 {% endif %}
 {% endblock %}

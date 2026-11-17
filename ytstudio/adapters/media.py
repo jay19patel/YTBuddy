@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import tempfile
 import textwrap
+from collections.abc import Callable
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -195,12 +196,14 @@ class FFmpegMediaProcessor:
         vertical: bool,
         out: Path,
         story: list[dict[str, Any]] | None = None,
-    ) -> None:
+        draft: bool = False,
+        on_progress: Callable[[int, int], None] | None = None,
+    ) -> dict[str, Any]:
         """Kinetic typography (pipeline/ + renderer/): every word on screen when it is said, 9:16 for a Short, 16:9
         otherwise. `story` is the LLM's storyboard (scenes naming the sentences of `units` they say); when it is
-        missing or unusable the scenes, colours and stickers are planned from the words by rule."""
+        missing or unusable the scenes, colours and stickers are planned from the words by rule. Returns the timeline
+        it drew, so `render_timeline` can draw the very same video again at another quality."""
         from pipeline import markup, plan, video
-        from pipeline.render import RenderError
         from pipeline.settings import load
         from pipeline.transcribe import TimedWord, align
         from ytstudio.adapters.kinetic import on_speech
@@ -233,11 +236,35 @@ class FFmpegMediaProcessor:
                 log.warning("storyboard not usable (%s); the rule-based plan is used", e)
                 planned = None
         try:
-            timeline = plan.plan(planned or video.auto_story(cfg, tokens, words), words, info, self.duration(audio))
+            chosen = planned or video.auto_story(cfg, tokens, words)
+            timeline = plan.plan(chosen, words, info, self.duration(audio), cfg.assets).model_dump(mode="json")
+        except ValueError as e:
+            raise PermanentError(f"The video could not be rendered: {e}") from e
+        self.render_timeline(timeline, audio, out, draft, on_progress)
+        return timeline
+
+    def render_timeline(
+        self,
+        timeline: dict[str, Any],
+        audio: Path,
+        out: Path,
+        draft: bool = False,
+        on_progress: Callable[[int, int], None] | None = None,
+    ) -> None:
+        """Draw a planned timeline with its voice-over: the same scenes, timing, music and sounds every time."""
+        from pipeline import video
+        from pipeline.render import RenderError
+        from pipeline.schema import Timeline
+        from pipeline.settings import load
+
+        cfg = load()
+        try:
+            t = Timeline.model_validate(timeline)
             out.parent.mkdir(parents=True, exist_ok=True)
             with tempfile.TemporaryDirectory() as d:
                 part = out.with_name(f".{out.name}.part.mp4")
-                video.render_video(cfg, timeline, audio, part, Path(d), video.music_bed(cfg), sfx=True)
+                music = video.music_bed(cfg, audio.name)  # the voice's file name picks the track: the same every time
+                video.render_video(cfg, t, audio, part, Path(d), music, sfx=True, draft=draft, on_progress=on_progress)
                 os.replace(part, out)
         except (RenderError, FileNotFoundError, ValueError) as e:
             raise PermanentError(f"The video could not be rendered: {e}") from e

@@ -439,6 +439,10 @@ class SaveBrief(Step):
         return {"brief_id": brief_id, "idea_ids": idea_ids}
 
 
+KEEP_ON_REGEN = {"yt", "videos", "privacy", "publish_at", "uploaded_at"}
+KEEP_PREFIXES = ("video_", "audio_", "thumb", "youtube_")
+
+
 @register
 class SaveSection(Step):
     """Regenerate: replace one asset's content, keep the previous versions in its history."""
@@ -456,6 +460,9 @@ class SaveSection(Step):
                 new = new["ideas"][min(asset.data.get("rank", 1), len(new["ideas"])) - 1]
             if asset.kind == "brief":  # the brief's regenerable section is its analysis
                 new = asset.data | {"analysis": new}
+            if asset.kind == "script":  # a new script keeps its video, thumbnail, upload and your YouTube text
+                kept = {k: v for k, v in asset.data.items() if k in KEEP_ON_REGEN or k.startswith(KEEP_PREFIXES)}
+                new = new | kept | ({"video_outdated": True} if kept.get("video_key") else {})
             asset.data = new | {"history": history[:5]}
             asset.title = new.get("idea", {}).get("title") or new.get("title") or asset.title
             asset.status = AssetStatus.NEEDS_REVIEW

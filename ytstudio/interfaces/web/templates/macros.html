@@ -12,6 +12,28 @@
 </form>
 {%- endmacro %}
 
+{# The way from idea to YouTube, the item's place on it, and the one thing to do next. #}
+{% set JOURNEY = [("Idea", "lightbulb"), ("Script", "file-text"), ("Video", "clapperboard"), ("Thumbnail", "image"), ("On YouTube", "youtube")] %}
+{% macro journey(a) -%}
+{% set at = a | stage %}
+<ol class="journey" aria-label="Progress: step {{ [at + 1, 5] | min }} of 5">
+  {% for label, icon in JOURNEY %}
+    {% set state = "done" if loop.index0 < at else "now" if loop.index0 == at else "todo" %}
+    <li class="{{ state }}"{% if state == "now" %} aria-current="step"{% endif %}><i data-lucide="{{ 'check' if state == 'done' else icon }}"></i><span>{{ label }}</span></li>
+  {% endfor %}
+</ol>
+{%- endmacro %}
+
+{% macro next_step(a, lang) -%}
+{% set at = a | stage %}
+{% if at == 1 %}{{ write_script(a.id, "Write the script", "btn small", lang) }}
+{% elif at == 2 and a.data.video_key %}{{ post("/scripts/" ~ a.id ~ "/videos/" ~ a.data.video_n ~ "/hd", "Make it HD") }}
+{% elif at == 2 %}{{ post("/scripts/" ~ a.id ~ "/video", "Generate video") }}
+{% elif at == 3 %}{{ post("/scripts/" ~ a.id ~ "/thumbnail", "Make thumbnail") }}
+{% elif at == 4 %}<a class="btn small" href="/assets/{{ a.id }}#upload">Upload to YouTube</a>
+{% else %}<a class="btn small" href="https://youtu.be/{{ a.data.youtube_id }}" target="_blank" rel="noopener">Watch on YouTube</a>{% endif %}
+{%- endmacro %}
+
 {% macro format_toggle(base, fmt, counts, status) -%}
 <nav class="seg" aria-label="Video type">
   {% for key, label, icon in [("long", "Long videos", "clapperboard"), ("short", "Shorts", "smartphone")] %}
@@ -35,9 +57,15 @@
 <p class="hint">Added to the end of the description when it is uploaded: the hashtags{% if is_short %} and #Shorts{% endif %}, a copyright line, credits and a short disclaimer. Every upload gets the same.</p>
 {%- endmacro %}
 
-{% macro upload_form(id, title, description, tags, tz, is_short, next, hashtags="", thumb=False) -%}
+{% macro upload_form(id, title, description, tags, tz, is_short, next, hashtags="", thumb=False, compact=False) -%}
 <form class="up-form" method="post" action="/assets/{{ id }}/upload">
   <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="next" value="{{ next }}">
+  {% if compact %}{# the text comes from the YouTube details saved on the page #}
+  <input type="hidden" name="title" value="{{ title }}"><input type="hidden" name="description" value="{{ description }}">
+  <input type="hidden" name="tags" value="{{ tags }}"><input type="hidden" name="hashtags" value="{{ hashtags }}">
+  <p class="muted">Uploads <strong>{{ title }}</strong> with the description, tags and hashtags above.</p>
+  <div class="row"><label class="field" for="p{{ id }}">Schedule (optional)</label><input type="datetime-local" id="p{{ id }}" name="publish_at"><p class="hint">Time zone: {{ tz }}. Leave empty to use the visibility below right away.</p></div>
+  {% else %}
   <details class="edit"><summary>Upload settings: title, description, tags, hashtags, schedule</summary>
     <div class="row"><label class="field" for="t{{ id }}">Title</label><input type="text" id="t{{ id }}" name="title" value="{{ title }}" maxlength="100"></div>
     <div class="row"><label class="field" for="d{{ id }}">Description</label><textarea id="d{{ id }}" name="description" rows="6">{{ description }}</textarea>{{ upload_hints(is_short) }}</div>
@@ -46,6 +74,7 @@
     {% if thumb %}<p class="hint">The thumbnail shown on this page is set on YouTube with the upload.</p>{% endif %}
     <div class="row"><label class="field" for="p{{ id }}">Schedule (optional)</label><input type="datetime-local" id="p{{ id }}" name="publish_at"><p class="hint">Time zone: {{ tz }}. Leave empty to use the visibility below right away.</p></div>
   </details>
+  {% endif %}
   <div class="actions">
     <select name="privacy" aria-label="Visibility"><option value="private">Private</option><option value="unlisted">Unlisted</option><option value="public">Public</option></select>
     <button class="btn" type="submit" data-busy="Uploading… keep this tab open"><i data-lucide="youtube"></i>Upload to YouTube</button>
@@ -61,12 +90,13 @@
 </form>
 {%- endmacro %}
 
-{% macro review_actions(a, next) -%}
+{% macro review_actions(a, next, regen=True) -%}
 <div class="actions">
   <span class="tag {{ a.status }}">{{ a.status | replace("_", " ") }}</span>
   {% if a.status != "approved" %}{{ post("/assets/" ~ a.id ~ "/status", "Approve", fields={"status": "approved", "next": next}) }}{% endif %}
   {% if a.status != "discarded" %}{{ post("/assets/" ~ a.id ~ "/status", "Discard", "copy", fields={"status": "discarded", "next": next}) }}{% endif %}
-  {% if a.kind == "script" %}
+  {% if a.kind == "script" and not regen %}
+  {% elif a.kind == "script" %}
     <form method="post" action="/assets/{{ a.id }}/regenerate" class="actions">
       <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="next" value="{{ next }}">
       <select name="language" aria-label="Write it again in">{% for v, n in languages %}<option value="{{ v }}" {% if v == a.data | script_lang %}selected{% endif %}>{{ n }}</option>{% endfor %}</select>
@@ -86,7 +116,7 @@
 </div>
 {%- endmacro %}
 
-{% set RUN_TITLES = {"daily": "Daily brief", "develop": "Writing the script", "shorts": "Making Shorts", "script_video": "Making the video", "thumbnail": "Making the thumbnail"} %}
+{% set RUN_TITLES = {"daily": "Daily brief", "develop": "Writing the script", "shorts": "Making Shorts", "script_video": "Making the video", "video_hd": "Making the HD video", "thumbnail": "Making the thumbnail"} %}
 {% set STEP_INFO = {
   "sync_channel": ("Sync channel stats", "Reads your latest channel numbers from YouTube."),
   "fetch_performance": ("Read your recent videos", "Pulls views and retention for your last uploads."),
@@ -109,7 +139,8 @@
   "plan_storyboard": ("Plan the scenes", "The AI designs each scene: colours, code windows, checklists, stickers and the follow button."),
   "speech_text": ("Prepare the Hindi reading", "For a Hinglish script read by Chatterbox: a Devanagari copy of each sentence, so the Hindi voice reads it naturally."),
   "narrate_script": ("Create the voice", "Chatterbox reads the script aloud on your Mac. A long script takes a few minutes."),
-  "render_script_video": ("Draw the video", "Draws every scene to the voice and ends on the outro. A long script can take a few minutes."),
+  "render_script_video": ("Draw the quick draft", "Draws every scene to the voice at lower quality, so you can check it soon. HD comes when you ask for it."),
+  "render_hd": ("Draw it in HD", "The same video, scenes, voice and timing, drawn again at full quality."),
   "plan_thumbnail": ("Design the thumbnail", "The AI picks the words, the boxed word, the colour and the sticker."),
   "draw_thumbnail": ("Draw the thumbnail", "Draws it in the video's look."),
 } %}

@@ -3,7 +3,7 @@
 {% block title %}Scripts · {{ current.title }}{% endblock %}
 {% block content %}
 <header><h1>Scripts</h1><span class="sub">Daily ideas and scripts (Auto) and your own (My idea), in one list.</span>
-  <a class="btn" href="/scripts/new?format={{ fmt }}"><i data-lucide="plus"></i>Create your own script</a></header>
+  <a class="btn" href="/scripts/new?format={{ fmt }}"><i data-lucide="plus"></i>{{ "Create a Short" if fmt == "short" else "Create a video" }}</a></header>
 <div class="toolbar between">
   {{ m.format_toggle("/scripts", fmt, counts, status) }}
   <form method="get" action="/scripts">
@@ -31,7 +31,8 @@
       <div class="chips">{{ m.chips(fmt, d | is_manual, d | script_lang(channel_language)) }}<span class="chip"><i data-lucide="hourglass"></i>No script yet</span></div>
       {% if d.angle %}<p>{{ d.angle }}</p>{% endif %}
       <p class="muted">{{ s.created_at.strftime("%-d %b %Y") }}{% if d.outlier_refs %} · {{ d.outlier_refs | length }} outlier reference(s){% endif %}</p>
-      {{ m.write_script(s.id, "Write the script", "btn small", d | script_lang(channel_language)) }}
+      {{ m.journey(s) }}
+      {{ m.next_step(s, d | script_lang(channel_language)) }}
     </article>
     {% else %}
     <article class="card">
@@ -41,14 +42,17 @@
         <p class="muted">{{ s.created_at.strftime("%-d %b %Y") }} · about {{ (d.script.estimated_minutes * 60) | round | int }} seconds · hook panel score {{ d.hook.panel_score }}</p>
         <pre class="copyable">{{ d.hook.hook }}</pre>
         {% if d.title %}<p><strong>Title:</strong> {{ d.title }}</p>{% endif %}
-        <div class="actions"><a class="btn small" href="/assets/{{ s.id }}">Read and edit</a><button class="copy" type="button" data-copy-target="#sp-{{ s.id }}">Copy the script</button></div>
+        <div class="actions"><a class="copy" href="/assets/{{ s.id }}">Read and edit</a><button class="copy" type="button" data-copy-target="#sp-{{ s.id }}">Copy the script</button></div>
         <pre class="copyable" id="sp-{{ s.id }}" hidden>{% for x in d.script.sections %}{{ x.spoken }}
 {% endfor %}</pre>
       {% else %}
         <p class="muted">{{ s.created_at.strftime("%-d %b %Y") }} · about {{ d.script.estimated_minutes }} min · {{ d.script.sections | length }} sections
           · hook panel score {{ d.hook.panel_score }} <span class="muted">({{ d.hook.band | lower }}, a heuristic)</span></p>
         <pre class="copyable">{{ d.hook.hook }}</pre>
+        <div class="actions"><a class="copy" href="/assets/{{ s.id }}">Read and edit</a></div>
       {% endif %}
+      {{ m.journey(s) }}
+      {{ m.next_step(s, "") }}
     </article>
     {% endif %}
   {% endfor %}

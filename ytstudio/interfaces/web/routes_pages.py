@@ -8,8 +8,9 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 
 from ytstudio.container import get_container
+from ytstudio.domain.metadata import clean_description, hashtag_list
 from ytstudio.domain.metrics import median_views
-from ytstudio.domain.models import AssetStatus, RetentionPoint, Video
+from ytstudio.domain.models import AssetStatus, RetentionPoint, Video, format_of
 from ytstudio.domain.video import VOICES, script_language, spoken_text, voice_for, voices_for
 from ytstudio.interfaces.web.app import Page, asset_format, back, csrf, page, queries, render
 from ytstudio.interfaces.web.routes_auth import cookie
@@ -111,8 +112,10 @@ def new_script(
     p: Page = Depends(csrf),
 ) -> Response:
     """Your own idea straight to a script: saved as a manual idea (so the script has its package and SEO like any
-    other), developed at once, and the page follows the run until the script opens."""
+    other), developed at once, and the page follows the run until the script opens. A few lines about the video are
+    enough: its start names the idea."""
     c = get_container()
+    title = title or clean_description(" ".join(details.split()), 100)
     idea = c.review.add_idea(p.user.id, p.channel_id, title, details, format=format, language=language)
     assert idea.id is not None
     return started(f"/scripts/new/{idea.id}", c.review.develop(p.user.id, idea.id))
@@ -138,6 +141,37 @@ def make_video(script_id: int, voice: str = Form(""), p: Page = Depends(csrf)) -
     return started(f"/assets/{script_id}", get_container().review.make_video(p.user.id, script_id, voice))
 
 
+@router.post("/scripts/{script_id}/videos/{n}/hd")
+def make_hd(script_id: int, n: int, p: Page = Depends(csrf)) -> Response:
+    return started(f"/assets/{script_id}", get_container().review.make_hd(p.user.id, script_id, n))
+
+
+@router.post("/scripts/{script_id}/videos/{n}/use")
+def use_video(script_id: int, n: int, p: Page = Depends(csrf)) -> Response:
+    get_container().review.use_video(p.user.id, script_id, n)
+    return back(f"/assets/{script_id}#video", "edited")
+
+
+@router.post("/scripts/{script_id}/details")
+def save_details(
+    script_id: int,
+    title: str = Form(""),
+    description: str = Form(""),
+    tags: str = Form(""),
+    hashtags: str = Form(""),
+    p: Page = Depends(csrf),
+) -> Response:
+    """The YouTube title, description, tags and hashtags for this script's video, as you want them uploaded."""
+    yt = {
+        "title": " ".join(title.split())[:100],
+        "description": description.strip(),
+        "tags": [t.strip() for t in tags.split(",") if t.strip()],
+        "hashtags": hashtag_list(hashtags),
+    }
+    get_container().review.edit(p.user.id, script_id, {"yt": yt})
+    return back(f"/assets/{script_id}#details", "edited")
+
+
 @router.post("/scripts/{script_id}/thumbnail")
 def make_thumbnail(script_id: int, text: str = Form(""), notes: str = Form(""), p: Page = Depends(csrf)) -> Response:
     """Only the thumbnail again; the video stays as it is."""
@@ -158,6 +192,7 @@ def upload_context(p: Page, a: dict[str, Any]) -> dict[str, Any]:
     with get_container().uow() as uow:
         tz = uow.schedules.get(a["channel_id"]).timezone
         keywords = uow.channels.get(a["channel_id"]).keywords
+    pairs: list[dict[str, Any]] = []
     if asset_format(d) == "short":
         try:
             extra = shlex.split(keywords)[:6]
@@ -179,7 +214,16 @@ def upload_context(p: Page, a: dict[str, Any]) -> dict[str, Any]:
             "tags": ", ".join(seo.get("tags", [])),
             "hashtags": " ".join(seo.get("hashtags", [])),
         }
-    return {"prefill": prefill, "tz": tz}
+    options = [prefill["title"], *[x["title"] for x in pairs if x["title"] != prefill["title"]]]
+    yt = d.get("yt") or {}  # what you saved on the script page wins over what was written for it
+    if yt:
+        prefill = {
+            "title": yt.get("title") or prefill["title"],
+            "description": yt.get("description", ""),
+            "tags": ", ".join(yt.get("tags", [])),
+            "hashtags": " ".join(yt.get("hashtags", [])),
+        }
+    return {"prefill": prefill, "title_options": [t for t in options if t != prefill["title"]], "tz": tz}
 
 
 @router.get("/assets/{asset_id}")
@@ -232,7 +276,7 @@ def delete_asset(asset_id: int, next: str = Form("/today"), p: Page = Depends(cs
     gone = get_container().review.delete(p.user.id, asset_id)
     dest = next if next.startswith("/") and not next.startswith("//") else "/today"
     if dest.startswith(f"/assets/{asset_id}"):  # that page no longer exists: go to the list it belonged to
-        dest = "/scripts" if gone.kind in ("idea", "script") else "/today"
+        dest = f"/scripts?format={format_of(gone.data)}" if gone.kind in ("idea", "script") else "/today"
     return back(dest, "deleted")
 
 

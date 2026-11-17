@@ -271,7 +271,32 @@
   #status { @apply text-sm text-muted mt-2 min-h-6; }
 
   /* Script video */
+  /* idea → script → video → thumbnail → YouTube: done steps green, the current one highlighted */
+  .journey { @apply flex flex-wrap items-center gap-1.5 my-3 p-0 list-none; }
+  .journey li { @apply inline-flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full bg-sunken text-muted; }
+  .journey li svg { @apply size-3.5; }
+  .journey li.done { color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, var(--surface)); }
+  .journey li.now { @apply text-white; background: var(--brand); }
+  .video-box[id] { scroll-margin-top: 80px; }
   .video-box { @apply my-3 p-4 rounded-xl border border-line bg-canvas; }
+  .brief { @apply whitespace-pre-line my-2 p-3 rounded-lg bg-surface border border-line; }
+  .choices { @apply grid gap-2 my-2; }
+  .choice { @apply flex gap-2 items-start p-2.5 rounded-lg border border-line bg-surface cursor-pointer; }
+  .choice:has(input:checked) { border-color: var(--brand); background: color-mix(in srgb, var(--brand) 6%, var(--surface)); }
+  .choice input { @apply mt-1; }
+  .runs { @apply grid gap-2; }
+  .run-row { @apply flex flex-wrap items-start justify-between gap-3 p-3 rounded-lg border border-line bg-surface; }
+  .run-main { @apply min-w-0 flex-1; }
+  .run-title { @apply flex flex-wrap items-center gap-2; }
+  .run-steps { @apply list-none p-0 mt-2 mb-0 flex flex-wrap gap-1; }
+  .run-steps li { @apply text-xs font-semibold px-2 py-0.5 rounded-full bg-sunken text-muted; }
+  .run-steps li.done { color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, var(--surface)); }
+  .run-steps li.running, .run-steps li.waiting { color: var(--info); background: color-mix(in srgb, var(--info) 14%, var(--surface)); }
+  .run-steps li.failed { color: var(--brand); background: color-mix(in srgb, var(--brand) 12%, var(--surface)); }
+  .pager { @apply flex items-center justify-between gap-2 mt-3; }
+  .versions { @apply list-none p-0 my-2 grid gap-1.5; }
+  .versions li { @apply flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-lg border border-line bg-surface; }
+  .versions li[aria-current] { border-color: var(--ok); }
   .video-box video, .video-box img.thumb { @apply rounded-lg bg-black mb-3; }
   .video-box video.tall { @apply max-h-[520px]; }
   .video-box video.wide { @apply w-full max-w-[640px]; }
@@ -325,6 +350,10 @@
   .step .time { @apply text-xs text-muted tabular-nums; }
   .step .note { @apply hidden text-[13px] text-muted mt-0.5 mb-0 max-w-[62ch]; }
   .step.running .note, .step.waiting .note { @apply block; }
+  .step .live { @apply mt-1.5 max-w-[62ch]; }
+  .step .live-note { @apply block text-[13px] font-semibold text-info tabular-nums; }
+  .step .live-bar { @apply block h-1.5 mt-1 rounded-full bg-sunken overflow-hidden; }
+  .step .live-bar i { @apply block h-full bg-info transition-[width] duration-500; }
   .step.done .ico { @apply bg-ok border-ok text-white; }
   .step.done .ico::before { content: "✓"; }
   .step.done strong { @apply text-ink; }

@@ -5,6 +5,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from pipeline import assets
 from ytstudio.config import ROOT
 from ytstudio.ports import Clock, ImageRenderer, Storage
 
@@ -13,7 +14,7 @@ PLAIN = {"text": "", "highlight": "", "bg": "blue", "sticker": "sparkles"}
 
 
 def stickers() -> list[str]:
-    return sorted(p.stem for p in STICKERS.glob("*.png"))  # new files are used at once
+    return assets.stickers(STICKERS.parent)  # new files are used at once
 
 
 def finish(design: dict[str, Any], text: str, title: str, suggested: list[str]) -> dict[str, Any]:

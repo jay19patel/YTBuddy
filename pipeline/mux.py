@@ -14,20 +14,26 @@ SFX_FOR = {"sticker": "pop", "card": "whoosh", "button_state": "click", "typing"
 
 def sfx_cues(t: Timeline, sfx_dir: Path) -> list[tuple[Path, float]]:
     """A sound per pop, whoosh, click and typing burst, from the files in assets/sfx (missing ones skipped). Variants
-    named pop-2.wav, pop-3.wav, ... take turns with pop.wav, so a repeated sound does not repeat exactly."""
+    named pop-2.wav, pop-3.wav, ... take turns with pop.wav, so a repeated sound does not repeat exactly. A file named
+    for a sticker (money.wav) plays instead of the pop when that sticker comes in, and one named for a presenter's
+    expression (shocked.wav) when the presenter makes that face."""
     used: dict[str, int] = defaultdict(int)
 
-    def cue(name: str, at: float) -> None:
+    def cue(name: str, at: float) -> bool:
         files = [f for f in [sfx_dir / f"{name}.wav", *sorted(sfx_dir.glob(f"{name}-*.wav"))] if f.exists()]
         if files:
             cues.append((files[used[name] % len(files)], at))
             used[name] += 1
+        return bool(files)
 
     cues: list[tuple[Path, float]] = []
     for s in t.scenes:
         if s.transition_in != "cut":
             cue("whoosh", s.start)
         for e in s.elements:
+            own = e.props.name if e.type == "sticker" else e.props.expression if e.type == "character" else None
+            if own and cue(own, e.start):
+                continue
             if name := SFX_FOR.get(e.type):
                 cue(name, e.start)
     return cues

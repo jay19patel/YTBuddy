@@ -20,6 +20,7 @@ from typing import Any
 
 from ytstudio.domain.errors import DomainError, PermanentError, TransientError
 from ytstudio.domain.video import CHATTERBOX_LANGUAGE
+from ytstudio.ports import Progress
 
 log = logging.getLogger(__name__)
 
@@ -174,6 +175,7 @@ CHATTERBOX_SCRIPT = Path(__file__).resolve().parents[2] / "tools" / "chatterbox_
 
 
 Heard = list[tuple[str, float, float]]  # (word, start, end) as a recogniser heard them
+CHATTERBOX_BATCH = 4  # sentences per request to the server
 CHATTERBOX_TAKES = 2  # a sentence said wrong (extra words after it, or most of it missing) is said once more
 QUIET_DB = -45.0  # below this a 20 ms window is silence or a murmur
 LEAD_S, TAIL_S = 0.06, 0.1  # kept before the first sound and after the last word of each sentence
@@ -267,13 +269,15 @@ class ChatterboxNarrator:
             raise ValueError(f"CHATTERBOX_URL must be an http(s) address, not {url!r}")
         self.python, self.ref, self.url, self.listen = python, ref_audio, url.rstrip("/"), listen
 
-    def speak(self, lines: list[tuple[str, float]], language: str, out: Path) -> list[dict[str, Any]]:
+    def speak(
+        self, lines: list[tuple[str, float]], language: str, out: Path, on_progress: Progress | None = None
+    ) -> list[dict[str, Any]]:
         with tempfile.TemporaryDirectory() as d:
             work = Path(d)
             texts = [t for t, _ in lines]
             best = [
                 self._judge(t, c, language, work)
-                for t, c in zip(texts, self._say(texts, language, work, 0), strict=True)
+                for t, c in zip(texts, self._say(texts, language, work, 0, on_progress), strict=True)
             ]
             for n in range(1, CHATTERBOX_TAKES):
                 redo = [i for i, take in enumerate(best) if take[0] > 0]
@@ -322,10 +326,16 @@ class ChatterboxNarrator:
             )
         return wrong, cut, times
 
-    def _say(self, texts: list[str], language: str, work: Path, take: int) -> list[bytes]:
-        """One 24 kHz mono 16-bit clip per text. A new `take` samples a new seed: the same one would say it the same."""
+    def _say(
+        self, texts: list[str], language: str, work: Path, take: int, on_progress: Progress | None = None
+    ) -> list[bytes]:
+        """One 24 kHz mono 16-bit clip per text. A new `take` samples a new seed: the same one would say it the same.
+        The server gets a few sentences at a time, so progress shows and no single request runs for many minutes."""
         if self.url:
-            self._ask_server(texts, language, work, take)
+            for i in range(0, len(texts), CHATTERBOX_BATCH):
+                self._ask_server(texts[i : i + CHATTERBOX_BATCH], language, work, take, first=i)
+                if on_progress:
+                    on_progress(min(len(texts), i + CHATTERBOX_BATCH), len(texts))
         else:
             self._run_script(texts, language, work, take)
         clips = []
@@ -336,7 +346,7 @@ class ChatterboxNarrator:
                 clips.append(r.readframes(r.getnframes()))
         return clips
 
-    def _ask_server(self, texts: list[str], language: str, work: Path, take: int) -> None:
+    def _ask_server(self, texts: list[str], language: str, work: Path, take: int, first: int = 0) -> None:
         req = urllib.request.Request(  # noqa: S310 - the scheme is checked to be http(s) in __init__
             f"{self.url}/speak",
             data=json.dumps({"lines": texts, "lang": language, "take": take}).encode(),
@@ -352,7 +362,7 @@ class ChatterboxNarrator:
             ) from e
         if len(wavs) != len(texts):
             raise PermanentError("The Chatterbox server sent a different number of sentences back")
-        for i, b64 in enumerate(wavs):
+        for i, b64 in enumerate(wavs, start=first):
             (work / f"{i}.wav").write_bytes(base64.b64decode(b64))
 
     def _run_script(self, texts: list[str], language: str, work: Path, take: int) -> None:
@@ -375,13 +385,17 @@ class VoiceNarrator:
     def __init__(self, online: EdgeNarrator, offline: PiperNarrator, chatterbox: ChatterboxNarrator | None = None):
         self.online, self.offline, self.chatterbox = online, offline, chatterbox
 
-    def speak(self, lines: list[tuple[str, float]], voice: str, out: Path) -> tuple[list[dict[str, Any]], str]:
+    def speak(
+        self, lines: list[tuple[str, float]], voice: str, out: Path, on_progress: Progress | None = None
+    ) -> tuple[list[dict[str, Any]], str]:
         if voice in CHATTERBOX_LANGUAGE:
             if not self.chatterbox:
                 raise PermanentError(
                     "Chatterbox is not set up: start tools/chatterbox_server.py on the Mac and set CHATTERBOX_URL"
                 )
-            return self.chatterbox.speak(lines, CHATTERBOX_LANGUAGE[voice], out), "Chatterbox (open source)"
+            return self.chatterbox.speak(
+                lines, CHATTERBOX_LANGUAGE[voice], out, on_progress
+            ), "Chatterbox (open source)"
         try:
             return self.online.speak(lines, voice, out), "Microsoft neural voice"
         except DomainError as e:

@@ -159,8 +159,13 @@ class Transcriber(Protocol):
     def transcribe(self, media_path: Path, language: str | None) -> list[Cue]: ...
 
 
+Progress = Callable[[int, int], None]  # (done, total): sentences said, frames drawn
+
+
 class Narrator(Protocol):
-    def speak(self, lines: list[tuple[str, float]], voice: str, out: Path) -> tuple[list[dict[str, Any]], str]:
+    def speak(
+        self, lines: list[tuple[str, float]], voice: str, out: Path, on_progress: Progress | None = None
+    ) -> tuple[list[dict[str, Any]], str]:
         """Read each (text, pause after in seconds) aloud into one WAV at `out`. Returns, per line, when it is said
         ({"start", "end", "words": [{"text", "start", "end"}]}, words may be empty) and which voice engine did it."""
         ...
@@ -176,6 +181,11 @@ class MediaProcessor(Protocol):
         vertical: bool,
         out: Path,
         story: list[dict[str, Any]] | None = None,
+        draft: bool = False,
+        on_progress: Progress | None = None,
+    ) -> dict[str, Any]: ...  # the timeline it drew
+    def render_timeline(
+        self, timeline: dict[str, Any], audio: Path, out: Path, draft: bool = False, on_progress: Progress | None = None
     ) -> None: ...
     def render_short(self, src: Path, start: float, end: float, cues: list[Cue], out: Path) -> None: ...
     def frame(self, src: Path, at: float, out: Path) -> None: ...
@@ -264,6 +274,7 @@ class StepPlan:
 
 class TaskDispatcher(Protocol):
     def start_pipeline(self, run_id: int, steps: list[StepPlan], idem_key: str) -> None: ...
+    def stop(self, idem_key: str, steps: list[str]) -> None: ...  # cut off a run's step tasks
 
 
 class Clock(Protocol):
@@ -407,3 +418,5 @@ class Deps:
     storage: Storage
     publish: Callable[[Event], None]
     settings: dict[str, Any] = field(default_factory=dict)
+    # (run id, step, what is happening now, share done 0-1): shown live on the run's progress panel
+    progress: Callable[[int, str, str, float], None] = lambda run_id, step, note, share: None

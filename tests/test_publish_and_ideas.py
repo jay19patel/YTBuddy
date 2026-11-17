@@ -79,7 +79,7 @@ def test_create_your_own_script_on_the_scripts_page_opens_the_script_when_it_is_
     user_id, _ = user_and_channel
     client, token = logged_in(db_url, user_id)
     listing = client.get("/scripts?format=short").text
-    assert 'href="/scripts/new?format=short"' in listing and "Create your own script" in listing
+    assert 'href="/scripts/new?format=short"' in listing and "Create a Short" in listing
     form = client.get("/scripts/new?format=short").text
     assert 'action="/scripts/new"' in form and 'value="short" checked' in form and 'name="details"' in form
     notes = "FFmpeg, Remotion aur mera pipeline, ek command mein video"

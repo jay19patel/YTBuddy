@@ -330,7 +330,7 @@ def test_chatterbox_runs_its_own_python_or_its_server_and_never_falls_back_to_an
         narrator.VoiceNarrator(Edge(), None, None).speak(texts, "chatterbox-en", tmp_path / "x.wav")  # type: ignore[arg-type]
 
     class Box:
-        def speak(self, lines, language, out):
+        def speak(self, lines, language, out, on_progress=None):
             self.language = language
             return []
 
@@ -397,7 +397,34 @@ def test_chatterbox_sentences_are_cut_where_their_last_word_ends_and_babble_is_s
 
     cb = narrator.ChatterboxNarrator(url="http://x", listen=listen)
     takes = []
-    cb._say = lambda texts, language, work, take: takes.append(take) or [tone(1, 12000) + tone(2, 9000)] * len(texts)  # type: ignore[method-assign]
+    cb._say = lambda texts, language, work, take, *_: (
+        takes.append(take) or [tone(1, 12000) + tone(2, 9000)] * len(texts)
+    )  # type: ignore[method-assign]
     timings = cb.speak([("सिर्फ नंबर्स यहाँ चलते हैं।", 0.3)], "hi", tmp_path / "v.wav")
     assert calls == ["hi", "hi"] and takes == [0, 1]  # the retake samples a new seed
     assert timings[0]["end"] < 2.3 and len(timings[0]["heard"]) == 5  # cut after "हैं" (1.78 s) and its fading tail
+
+
+def test_chatterbox_server_gets_a_few_sentences_at_a_time_and_progress_is_told(tmp_path):
+    import wave
+
+    from ytstudio.adapters import narrator
+
+    asked: list[tuple[list[str], int]] = []
+    told: list[tuple[int, int]] = []
+
+    def server(texts, language, work, take, first=0):
+        asked.append((texts, first))
+        for i, _ in enumerate(texts, start=first):
+            with wave.open(str(work / f"{i}.wav"), "wb") as w:
+                w.setnchannels(1)
+                w.setsampwidth(2)
+                w.setframerate(narrator.CHATTERBOX_RATE)
+                w.writeframes(bytes([i]) * 4)
+
+    cb = narrator.ChatterboxNarrator(url="http://127.0.0.1:8765")
+    cb._ask_server = server  # type: ignore[method-assign]
+    texts = [f"line {i}" for i in range(9)]
+    clips = cb._say(texts, "en", tmp_path, 0, lambda done, total: told.append((done, total)))
+    assert [first for _, first in asked] == [0, 4, 8] and [len(t) for t, _ in asked] == [4, 4, 1]
+    assert told == [(4, 9), (8, 9), (9, 9)] and [c[0] for c in clips] == list(range(9))  # in order

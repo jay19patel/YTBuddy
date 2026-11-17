@@ -1,5 +1,7 @@
 """Composition root: the only place that picks concrete adapters."""
 
+import json
+import logging
 import tomllib
 from datetime import UTC, datetime, timedelta
 from functools import cached_property
@@ -10,6 +12,8 @@ from ytstudio.application.pipeline import PipelineRunner
 from ytstudio.application.use_cases import Accounts, Events, Packaging, Profiles, Review, Scheduling, Shorts, Sync
 from ytstudio.config import Settings, get_settings
 from ytstudio.ports import Deps, TaskDispatcher, UnitOfWork
+
+log = logging.getLogger(__name__)
 
 
 class SystemClock:
@@ -276,7 +280,30 @@ class Container:
                 "outlier_min_multiple": self.s.outlier_min_multiple,
                 "trend_providers": self.pipelines_config["trends"]["providers"],
             },
+            progress=self.progress,
         )
+
+    def progress(self, run_id: int, step: str, note: str, share: float) -> None:
+        """What a long step is doing right now, for the run's progress panel. Best effort: it never stops the step."""
+        try:
+            data = json.dumps({"note": note, "share": round(max(0.0, min(1.0, share)), 3)})
+            self.redis.set(f"yt:progress:{run_id}:{step}", data, ex=6 * 3600)
+        except Exception as e:
+            log.warning("progress not saved: %s", e)
+
+    def progress_of(self, run_id: int) -> dict[str, dict[str, Any]]:
+        try:
+            keys = list(self.redis.scan_iter(f"yt:progress:{run_id}:*"))
+            if not keys:
+                return {}
+            return {
+                (k.decode() if isinstance(k, bytes) else k).rsplit(":", 1)[1]: json.loads(v)
+                for k, v in zip(keys, self.redis.mget(keys), strict=True)
+                if v
+            }
+        except Exception as e:
+            log.warning("progress not read: %s", e)
+            return {}
 
     @cached_property
     def dispatcher(self) -> TaskDispatcher:

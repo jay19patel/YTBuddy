@@ -41,6 +41,8 @@ class AudioCfg(Strict):
 class VideoCfg(Strict):
     crf: int = Field(18, ge=0, le=51)
     timeout_s: int = 3600
+    draft_scale: float = Field(0.5, gt=0, le=1)  # a draft is drawn at this share of the width and height
+    draft_crf: int = Field(26, ge=0, le=51)
 
 
 class Settings(Strict):

@@ -14,6 +14,7 @@ x-app: &app
   volumes:
     - media:/app/media  # masters, Shorts, covers: shared by api and workers on this machine
     - ./YTStudioCred.json:/app/YTStudioCred.json:ro
+    - ./assets:/app/assets:ro  # stickers, presenters, backgrounds, sfx, music: a new file is used without a rebuild
   depends_on:
     postgres: {condition: service_healthy}
     redis: {condition: service_healthy}
