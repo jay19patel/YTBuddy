@@ -8,13 +8,14 @@ from typing import Any
 
 from pydantic import Field, create_model
 
+from ytstudio.application import thumbnails
 from ytstudio.application.pipeline import Context, Step, register
-from ytstudio.application.schemas import SpeechOut, StoryboardOut
-from ytstudio.application.steps_daily import LLMStep
-from ytstudio.config import ROOT
+from ytstudio.application.schemas import SpeechOut, StoryboardOut, ThumbnailOut
+from ytstudio.application.steps_daily import LANG_NAMES, LLMStep
 from ytstudio.domain.errors import PermanentError
 from ytstudio.domain.models import Asset, Queue, format_of
-from ytstudio.domain.video import voice_for
+from ytstudio.domain.speech import pronounce
+from ytstudio.domain.video import CHATTERBOX_LANGUAGE, script_language, voice_for
 
 SENTENCE_END = re.compile(r"(?<=[.!?।])\s+|\n+")
 PAUSE_SENTENCE, PAUSE_SECTION = 0.28, 0.7  # a human reader breathes between thoughts
@@ -68,7 +69,6 @@ class PlanStoryboard(LLMStep):
             if rows:
                 chunks[-1] += rows
         fmt = "short" if format_of(a.data) == "short" else "long"
-        stickers = sorted(p.stem for p in (ROOT / "assets" / "stickers").glob("*.png"))  # new files are used at once
         scenes: list[dict[str, Any]] = []
         try:
             for i, chunk in enumerate(chunks):
@@ -77,7 +77,7 @@ class PlanStoryboard(LLMStep):
                     "first": i == 0,
                     "last": i == len(chunks) - 1,
                     "format": fmt,
-                    "stickers": stickers,
+                    "stickers": thumbnails.stickers(),
                 }
                 scenes += [s.model_dump() for s in self.ask(ctx, "smart", "storyboard", v, StoryboardOut).scenes]
         except Exception as e:
@@ -98,12 +98,13 @@ class SpeechText(LLMStep):
         if voice_for(" ".join(lines), str(ctx.inputs.get("voice") or "")) != "chatterbox-hinglish":
             return {"lines": None}
         out: list[str] = []
-        for i in range(0, len(lines), SPEECH_CHUNK):
-            chunk = lines[i : i + SPEECH_CHUNK]
+        fixed = [pronounce(x) for x in lines]  # names, acronyms and versions get one spelling, so they sound the same
+        for i in range(0, len(fixed), SPEECH_CHUNK):
+            chunk = fixed[i : i + SPEECH_CHUNK]
             exact = create_model(
                 "SpeechOut", __base__=SpeechOut, lines=(list[str], Field(min_length=len(chunk), max_length=len(chunk)))
             )
-            out += self.ask(ctx, "fast", "speech", {"sentences": chunk}, exact).lines
+            out += [pronounce(x) for x in self.ask(ctx, "fast", "speech", {"sentences": chunk}, exact).lines]
         return {"lines": out}
 
 
@@ -121,7 +122,12 @@ class NarrateScript(Step):
             raise PermanentError("This script has no spoken words to read.")
         voice = voice_for(" ".join(t for t, _ in lines), str(ctx.inputs.get("voice") or ""))  # fits the words
         speech = (ctx.outputs.get("speech_text") or {}).get("lines")
-        said = [(x, pause) for x, (_, pause) in zip(speech, lines, strict=True)] if speech else lines
+        if speech:
+            said = [(x, pause) for x, (_, pause) in zip(speech, lines, strict=True)]
+        elif CHATTERBOX_LANGUAGE.get(voice) == "hi":  # a Hindi script's English words, said the same way every time
+            said = [(pronounce(x), pause) for x, pause in lines]
+        else:
+            said = lines
         with tempfile.TemporaryDirectory() as d:
             wav, mp3 = Path(d) / "voice.wav", Path(d) / "voice.mp3"
             timings, engine = self.deps.narrator.speak(said, voice, wav)
@@ -174,3 +180,70 @@ class RenderScriptVideo(Step):
             if k and k not in (key, n["audio_key"]):
                 self.deps.storage.delete(k)
         return {"video_key": key, "seconds": n["seconds"]}
+
+
+@register
+class PlanThumbnail(LLMStep):
+    """The LLM designs the thumbnail: the words, the one boxed word, the colour and the sticker. The creator's own text
+    and instructions, when given, lead. If the model fails, a plain design from the title is drawn instead."""
+
+    name = "plan_thumbnail"
+    critical = False
+
+    def run(self, ctx: Context) -> dict[str, Any]:
+        a = load_script(self, ctx)
+        d = a.data
+        suggested = []
+        if a.parent_id:  # a long video's package (titles + thumbnail text) hangs under the same idea
+            with self.deps.uow() as uow:
+                for x in uow.assets.children(a.parent_id, ctx.user.id):
+                    if x.kind == "package":
+                        suggested = [p["thumbnail_text"] for p in x.data.get("pairs", []) if p.get("thumbnail_text")]
+        title = str(d.get("youtube_title") or d.get("title") or a.title)
+        text = str(ctx.inputs.get("thumb_text") or "").strip()
+        sections = d.get("script", {}).get("sections", [])
+        language = script_language(d, ctx.schedule.language)
+        v = {
+            "title": title,
+            "format": "short" if format_of(d) == "short" else "long",
+            "language": LANG_NAMES.get(language, language),
+            "opening": " ".join(str(s.get("spoken", "")) for s in sections[:1])[:600],
+            "suggested": suggested,
+            "text": text,
+            "notes": str(ctx.inputs.get("thumb_notes") or "").strip(),
+            "attempt": ctx.inputs.get("attempt") or 0,
+            "stickers": thumbnails.stickers(),
+        }
+        try:
+            design = self.ask(ctx, "smart", "thumbnail", v, ThumbnailOut).model_dump()
+        except Exception as e:
+            log.warning("thumbnail design failed (%s); a plain one is drawn from the title", e)
+            design = {}
+        return thumbnails.finish(design, text, title, suggested)
+
+
+@register
+class DrawThumbnail(Step):
+    name = "draw_thumbnail"
+    queue = Queue.MEDIA
+    needs = ("plan_thumbnail",)
+
+    def run(self, ctx: Context) -> dict[str, Any]:
+        a = load_script(self, ctx)
+        t = ctx.out("plan_thumbnail")
+        short = format_of(a.data) == "short"
+        key = thumbnails.draw(self.deps.images, self.deps.storage, self.deps.clock, t, short, f"{a.channel_id}/{a.id}")
+        with self.deps.uow() as uow:
+            fresh = uow.assets.get(a.id or 0, ctx.user.id)
+            old = fresh.data.get("thumb_key")
+            fresh.data = fresh.data | {
+                "thumb_key": key,
+                "thumb": t,
+                "thumb_made_at": self.deps.clock.now().isoformat(),
+                "thumb_attempts": int(fresh.data.get("thumb_attempts") or 0) + 1,
+            }
+            uow.assets.update(fresh)
+            uow.commit()
+        if old and old != key:  # the thumbnail made before this one is replaced
+            self.deps.storage.delete(old)
+        return {"thumb_key": key}

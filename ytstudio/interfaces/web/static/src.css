@@ -272,9 +272,17 @@
 
   /* Script video */
   .video-box { @apply my-3 p-4 rounded-xl border border-line bg-canvas; }
-  .video-box video { @apply rounded-lg bg-black mb-3; }
+  .video-box video, .video-box img.thumb { @apply rounded-lg bg-black mb-3; }
   .video-box video.tall { @apply max-h-[520px]; }
   .video-box video.wide { @apply w-full max-w-[640px]; }
+  .video-box img.thumb.tall { @apply max-h-[360px] w-auto; }
+  .video-box img.thumb.wide { @apply w-full max-w-[480px]; }
+  .ai-box { @apply p-4 rounded-xl border border-line bg-canvas; }
+  .ai-box .field { @apply inline-flex items-center gap-1.5; }
+  .ai-box .field svg { @apply size-4; }
+  .thumb-box img.thumb { @apply block rounded-lg w-full max-w-[420px] mb-2; }
+  body:has(#m-short:checked) .thumb-box img.thumb { @apply max-w-[200px]; }
+  .thumb-box label.copy { @apply cursor-pointer; }
   .video-box .actions select { @apply w-auto; }
 
   /* Idea and script types */

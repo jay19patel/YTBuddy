@@ -7,7 +7,7 @@ from typing import Any
 
 from ytstudio.application import steps_daily, steps_shorts, steps_video  # noqa: F401  (registers the steps)
 from ytstudio.application.pipeline import PipelineRunner
-from ytstudio.application.use_cases import Accounts, Events, Profiles, Review, Scheduling, Shorts, Sync
+from ytstudio.application.use_cases import Accounts, Events, Packaging, Profiles, Review, Scheduling, Shorts, Sync
 from ytstudio.config import Settings, get_settings
 from ytstudio.ports import Deps, TaskDispatcher, UnitOfWork
 
@@ -319,6 +319,10 @@ class Container:
     @cached_property
     def shorts(self) -> Shorts:
         return Shorts(self.uow, self.runner, self.youtube, self.storage)
+
+    @cached_property
+    def packaging(self) -> Packaging:
+        return Packaging(self.uow, self.llm, self.media["images"], self.storage, self.clock)
 
     # ----- health -----
 

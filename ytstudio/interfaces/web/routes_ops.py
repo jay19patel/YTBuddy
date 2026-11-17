@@ -10,12 +10,13 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.encoders import jsonable_encoder
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response
 
 from ytstudio.adapters.youtube import friendly_error
 from ytstudio.config import get_settings
 from ytstudio.container import get_container
 from ytstudio.domain.errors import DomainError
+from ytstudio.domain.metadata import hashtag_list
 from ytstudio.domain.models import Channel, Schedule, SyncSettings
 from ytstudio.domain.schedule import parse_local_datetime
 from ytstudio.interfaces.web.app import Page, back, csrf, page, queries, render
@@ -276,44 +277,109 @@ def upload(
     title: str = Form(...),
     description: str = Form(""),
     tags: str = Form(""),
+    hashtags: str = Form(""),
+    thumb_key: str = Form(""),
     privacy: str = Form("private"),
     mode: str = Form("video"),
     publish_at: str = Form(""),
     p: Page = Depends(csrf),
 ) -> Response:
+    """A video made elsewhere, uploaded by the same rules as one made here (see Shorts._send)."""
     ctx = publish_context(p)
-    if privacy not in PRIVACY:
-        return render(p, "publish.html", status_code=400, error="Invalid privacy value.", **ctx)
-    status: dict[str, Any] = {"privacyStatus": privacy, "selfDeclaredMadeForKids": False}
-    when = None
-    if publish_at.strip():  # scheduled: uploaded as private now, YouTube makes it public at that time
-        when = parse_local_datetime(publish_at, ctx["tz"], datetime.now(UTC))
-        status = {**status, "privacyStatus": "private", "publishAt": when.strftime("%Y-%m-%dT%H:%M:%SZ")}
+    when = parse_local_datetime(publish_at, ctx["tz"], datetime.now(UTC)) if publish_at.strip() else None
     is_short = mode == "short"
-    if is_short and "#shorts" not in (title + description).lower():
-        # Shorts = vertical video under 3 min; the tag helps YouTube classify it.
-        description = f"{description}\n\n#Shorts".strip()
     with tempfile.NamedTemporaryFile(suffix=Path(video.filename or "video.mp4").suffix, delete=False) as tmp:
         shutil.copyfileobj(video.file, tmp)
     try:
-        vid = get_container().youtube.upload(
+        sent = get_container().shorts.upload_file(
+            p.user.id,
             p.channel_id,
-            tmp.name,
-            {
-                "snippet": {
-                    "title": title[:100],
-                    "description": description,
-                    "tags": [t.strip() for t in tags.split(",") if t.strip()],
-                    "categoryId": "22",
-                },
-                "status": status,
-            },
+            Path(tmp.name),
+            title,
+            description,
+            [t.strip() for t in tags.split(",") if t.strip()],
+            hashtag_list(hashtags),
+            privacy,
+            when,
+            is_short,
+            thumb_key.strip() or None,
         )
+    except DomainError as e:
+        return render(p, "publish.html", status_code=400, error=str(e), **ctx)
     finally:
         os.unlink(tmp.name)
     kind = "Short" if is_short else "Video"
     planned = f" and scheduled for {publish_at.strip().replace('T', ' ')} ({ctx['tz']})" if when else ""
-    return render(p, "publish.html", success=f"{kind} uploaded{planned}: https://youtu.be/{vid}", **ctx)
+    note = f" The thumbnail was not set: {sent['thumb_error']}" if sent.get("thumb_error") else ""
+    return render(
+        p, "publish.html", success=f"{kind} uploaded{planned}: https://youtu.be/{sent['youtube_id']}.{note}", **ctx
+    )
+
+
+def _thumb_json(out: dict[str, Any]) -> JSONResponse:
+    return JSONResponse(out | {"thumb_url": f"/files/thumb?key={out['thumb_key']}"})
+
+
+@router.post("/publish/write", dependencies=[Depends(publish_enabled)])
+def publish_write(
+    about: str = Form(""),
+    title: str = Form(""),
+    mode: str = Form("video"),
+    language: str = Form(""),
+    old: str = Form(""),
+    p: Page = Depends(csrf),
+) -> Response:
+    """Write with AI: title, description, tags, hashtags and a thumbnail from your words about the video."""
+    try:
+        out = get_container().packaging.write(p.user.id, p.channel_id, about, title, mode == "short", language, old)
+    except DomainError as e:
+        return JSONResponse({"detail": str(e)}, status_code=400)
+    return _thumb_json(out)
+
+
+@router.post("/publish/thumbnail", dependencies=[Depends(publish_enabled)])
+def publish_thumbnail(
+    title: str = Form(""),
+    about: str = Form(""),
+    text: str = Form(""),
+    notes: str = Form(""),
+    mode: str = Form("video"),
+    old: str = Form(""),
+    p: Page = Depends(csrf),
+) -> Response:
+    """Only a new thumbnail, with your text and instructions if given."""
+    try:
+        out = get_container().packaging.redesign(
+            p.user.id, p.channel_id, title, about, text, notes, mode == "short", old
+        )
+    except DomainError as e:
+        return JSONResponse({"detail": str(e)}, status_code=400)
+    return _thumb_json(out)
+
+
+@router.post("/publish/thumbnail/own", dependencies=[Depends(publish_enabled)])
+def publish_own_thumbnail(image: UploadFile = File(...), old: str = Form(""), p: Page = Depends(csrf)) -> Response:
+    """Your own thumbnail image instead of the drawn one."""
+    with tempfile.NamedTemporaryFile(suffix=Path(image.filename or "thumb.jpg").suffix, delete=False) as tmp:
+        shutil.copyfileobj(image.file, tmp)
+    try:
+        key = get_container().packaging.own_image(p.channel_id, Path(tmp.name), old)
+    except DomainError as e:
+        return JSONResponse({"detail": str(e)}, status_code=400)
+    finally:
+        os.unlink(tmp.name)
+    return _thumb_json({"thumb_key": key})
+
+
+@router.get("/files/thumb")
+def thumb_file(key: str, p: Page = Depends(page)) -> Response:
+    """A thumbnail drawn on the Publish page; only this channel's."""
+    if not key.startswith(f"thumbs/{p.channel_id}/upload-") or ".." in key:
+        raise HTTPException(404)
+    c = get_container()
+    if not c.storage.exists(key):
+        raise HTTPException(404)
+    return FileResponse(c.storage.get(key))
 
 
 @router.post("/live", dependencies=[Depends(publish_enabled)])

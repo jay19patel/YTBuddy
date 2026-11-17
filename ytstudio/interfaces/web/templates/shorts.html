@@ -69,7 +69,7 @@
       </details>
       {{ m.review_actions(s, "/shorts") }}
       {% if d.youtube_id %}{{ m.uploaded_box(d) }}
-      {% elif s.status != "discarded" and flags.publish %}{{ m.upload_form(s.id, s.title, d.description, default_tags, tz, true, "/shorts") }}
+      {% elif s.status != "discarded" and flags.publish %}{{ m.upload_form(s.id, s.title, d.description, ((d.tags or []) + [default_tags]) | join(", ") if d.tags else default_tags, tz, true, "/shorts", (d.hashtags or []) | join(" ")) }}
       {% endif %}
       <p><a href="/files/asset/{{ s.id }}/video?download=1">Download MP4</a>{% if d.cover_key %} · <a href="/files/asset/{{ s.id }}/cover?download=1">Cover</a>{% endif %}</p>
     </article>

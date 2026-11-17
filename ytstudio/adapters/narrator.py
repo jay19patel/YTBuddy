@@ -272,14 +272,15 @@ class ChatterboxNarrator:
             work = Path(d)
             texts = [t for t, _ in lines]
             best = [
-                self._judge(t, c, language, work) for t, c in zip(texts, self._say(texts, language, work), strict=True)
+                self._judge(t, c, language, work)
+                for t, c in zip(texts, self._say(texts, language, work, 0), strict=True)
             ]
-            for _ in range(CHATTERBOX_TAKES - 1):
+            for n in range(1, CHATTERBOX_TAKES):
                 redo = [i for i, take in enumerate(best) if take[0] > 0]
                 if not redo:
                     break
                 log.info("Chatterbox said %d of %d sentences wrong: saying them again", len(redo), len(texts))
-                for i, clip in zip(redo, self._say([texts[i] for i in redo], language, work), strict=True):
+                for i, clip in zip(redo, self._say([texts[i] for i in redo], language, work, n), strict=True):
                     take = self._judge(texts[i], clip, language, work)
                     best[i] = min(best[i], take, key=lambda x: x[0])
             timings: list[dict[str, Any]] = []
@@ -321,12 +322,12 @@ class ChatterboxNarrator:
             )
         return wrong, cut, times
 
-    def _say(self, texts: list[str], language: str, work: Path) -> list[bytes]:
-        """One 24 kHz mono 16-bit clip per text."""
+    def _say(self, texts: list[str], language: str, work: Path, take: int) -> list[bytes]:
+        """One 24 kHz mono 16-bit clip per text. A new `take` samples a new seed: the same one would say it the same."""
         if self.url:
-            self._ask_server(texts, language, work)
+            self._ask_server(texts, language, work, take)
         else:
-            self._run_script(texts, language, work)
+            self._run_script(texts, language, work, take)
         clips = []
         for i in range(len(texts)):
             with wave.open(str(work / f"{i}.wav"), "rb") as r:
@@ -335,10 +336,10 @@ class ChatterboxNarrator:
                 clips.append(r.readframes(r.getnframes()))
         return clips
 
-    def _ask_server(self, texts: list[str], language: str, work: Path) -> None:
+    def _ask_server(self, texts: list[str], language: str, work: Path, take: int) -> None:
         req = urllib.request.Request(  # noqa: S310 - the scheme is checked to be http(s) in __init__
             f"{self.url}/speak",
-            data=json.dumps({"lines": texts, "lang": language}).encode(),
+            data=json.dumps({"lines": texts, "lang": language, "take": take}).encode(),
             headers={"Content-Type": "application/json"},
         )
         try:
@@ -354,10 +355,10 @@ class ChatterboxNarrator:
         for i, b64 in enumerate(wavs):
             (work / f"{i}.wav").write_bytes(base64.b64decode(b64))
 
-    def _run_script(self, texts: list[str], language: str, work: Path) -> None:
+    def _run_script(self, texts: list[str], language: str, work: Path, take: int) -> None:
         (work / "lines.json").write_text(json.dumps(texts), encoding="utf-8")
         cmd = [self.python, str(CHATTERBOX_SCRIPT), "--lines", str(work / "lines.json"), "--out", str(work)]
-        cmd += ["--lang", language, *(["--ref", self.ref] if self.ref else [])]
+        cmd += ["--lang", language, "--take", str(take), *(["--ref", self.ref] if self.ref else [])]
         try:
             p = subprocess.run(cmd, capture_output=True, text=True, timeout=CHATTERBOX_TIMEOUT_S, check=False)
         except (OSError, subprocess.TimeoutExpired) as e:

@@ -19,6 +19,7 @@ from ytstudio.domain.errors import PermanentError
 from ytstudio.domain.events import BriefReady
 from ytstudio.domain.metrics import age_days, median_views, retention_cliffs, top_and_bottom, velocity
 from ytstudio.domain.models import AssetStatus, Queue, Video
+from ytstudio.domain.video import SHORT_WORDS, long_minutes, long_words, word_count
 from ytstudio.ports import LLMRequest, T, TrendQuery
 
 LANG_NAMES = {
@@ -41,7 +42,7 @@ def channel_vars(ctx: Context) -> dict[str, Any]:
         "niche": s.niche or "not set",
         "language": LANG_NAMES.get(language_of(ctx), language_of(ctx)),
         "region": s.region,
-        "target_minutes": s.target_minutes,
+        "target_minutes": long_minutes(s.target_minutes),
         "voice": ctx.schedule.voice_md.strip(),
         "about": ctx.channel.about.strip(),
         "keywords": ctx.channel.keywords,
@@ -260,7 +261,12 @@ def long_script(step: LLMStep, ctx: Context, idea: dict[str, Any]) -> dict[str, 
     hooks = step.ask(ctx, "smart", "hooks", {"idea": idea}, HooksOut).hooks
     scored = step.deps.hooks.score(hooks)
     best = scored[0]
-    script = step.ask(ctx, "smart", "script", {"idea": idea, "hook": best["hook"]}, ScriptOut)
+    low, high = long_words(ctx.schedule.target_minutes)
+    v = {"idea": idea, "hook": best["hook"], "min_words": low, "max_words": high, "feedback": 0}
+    script = step.ask(ctx, "smart", "script", v, ScriptOut)
+    n = word_count([s.spoken for s in script.sections])
+    if not low * 0.85 <= n <= high * 1.2:  # models often write thin drafts: one more try, told how far off it was
+        script = step.ask(ctx, "smart", "script", v | {"feedback": n}, ScriptOut)
     return {
         "idea": idea,
         "format": "long",
@@ -273,7 +279,12 @@ def long_script(step: LLMStep, ctx: Context, idea: dict[str, Any]) -> dict[str, 
 
 def short_script(step: LLMStep, ctx: Context, idea: dict[str, Any]) -> dict[str, Any]:
     """A Short is one call: the model writes the hook, the lines and the title and description together."""
-    out = step.ask(ctx, "smart", "short_script", {"idea": idea}, ShortScriptOut)
+    low, high = SHORT_WORDS
+    v = {"idea": idea, "min_words": low, "max_words": high, "feedback": 0}
+    out = step.ask(ctx, "smart", "short_script", v, ShortScriptOut)
+    n = word_count([s.spoken for s in out.sections])
+    if not low * 0.85 <= n <= high * 1.2:
+        out = step.ask(ctx, "smart", "short_script", v | {"feedback": n}, ShortScriptOut)
     scored = step.deps.hooks.score([out.hook])
     script = {
         "title_working": out.title,
@@ -289,6 +300,8 @@ def short_script(step: LLMStep, ctx: Context, idea: dict[str, Any]) -> dict[str,
         "script": script,
         "title": out.title,
         "description": out.description,
+        "tags": out.tags,
+        "hashtags": out.hashtags,
     }
 
 

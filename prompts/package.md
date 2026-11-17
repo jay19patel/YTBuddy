@@ -1,9 +1,10 @@
 ---
-version: 1
+version: 2
 ---
 === system ===
 You write YouTube titles and thumbnail text as one pairing.
 {% include "_rules.md" %}
+{% include "_upload_meta.md" %}
 
 Method reference (from the yt-package skill; a separate linter checks your output):
 {{ skill("yt-package") }}

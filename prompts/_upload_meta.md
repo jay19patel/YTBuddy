@@ -1,0 +1,5 @@
+YouTube upload text rules (title, description, tags, hashtags):
+- Title: write it in English, or in Hinglish (Latin letters) when the video is in Hindi or Hinglish. Never Devanagari in the title. Put the main search keyword in the first 40 characters, keep it under 60 characters, make one clear promise the video keeps. No clickbait the video does not deliver, no ALL CAPS sentences, no emoji, no "<" or ">".
+- Description: in English (Hinglish is fine for a Hindi or Hinglish video), plain text, no markdown, no "<" or ">". Line 1 repeats the main search phrase and the promise. Then 3 to 5 short lines on what the viewer learns or gets, then one line asking them to subscribe or follow for more. Do not write hashtags, links, credits or a copyright notice in it; those are added automatically.
+- Tags: 8 to 15 search phrases a real person types, the exact topic first, then broader ones, plus English and Hinglish spellings of the same phrase when the video is in Hindi. No "#", no channel name, no unrelated popular words.
+- Hashtags: 3 to 5, each one word or joined words starting with "#", the most specific first (the first three show above the title).

@@ -68,12 +68,14 @@ class ScriptOut(BaseModel):
 
 
 class ShortScriptOut(BaseModel):
-    VERSION: ClassVar[str] = "1"
+    VERSION: ClassVar[str] = "3"
     hook: str = Field(description="The first spoken line, said in the first two seconds")
     sections: list[ScriptSection] = Field(min_length=2, max_length=5)
     title: str = Field(max_length=100)
-    description: str = Field(description="Two short lines, no hashtags")
-    estimated_seconds: int = Field(description="Spoken length, at most 58")
+    description: str = Field(description="Several short lines, no hashtags")
+    tags: list[str] = Field(default_factory=list, max_length=15)
+    hashtags: list[str] = Field(default_factory=list, max_length=5)
+    estimated_seconds: int = Field(description="Spoken length, 40 to 60")
 
 
 class StoryboardScene(BaseModel):
@@ -107,9 +109,10 @@ class PackageOut(BaseModel):
 
 
 class SeoOut(BaseModel):
-    VERSION: ClassVar[str] = "1"
+    VERSION: ClassVar[str] = "2"
     description: str
     tags: list[str] = Field(max_length=15)
+    hashtags: list[str] = Field(default_factory=list, max_length=5)
     pinned_comment: str
     target_queries: list[str] = Field(min_length=3, max_length=3)
 
@@ -130,8 +133,27 @@ class ShortPicksOut(BaseModel):
 class ShortMeta(BaseModel):
     title: str = Field(max_length=100)
     description: str
+    tags: list[str] = Field(default_factory=list, max_length=15)
+    hashtags: list[str] = Field(default_factory=list, max_length=5)
 
 
 class ShortMetaOut(BaseModel):
-    VERSION: ClassVar[str] = "1"
+    VERSION: ClassVar[str] = "2"
     shorts: list[ShortMeta]
+
+
+class ThumbnailOut(BaseModel):
+    VERSION: ClassVar[str] = "1"
+    text: str = Field(max_length=40, description="2 to 5 words drawn huge on the thumbnail")
+    highlight: str = Field(description="The one word of `text` that gets the colour box")
+    bg: Literal["black", "orange", "blue", "crimson", "charcoal", "yellow", "green", "beige"]
+    sticker: str = Field(description="One sticker name from the list")
+
+
+class UploadMetaOut(BaseModel):
+    VERSION: ClassVar[str] = "1"
+    title: str = Field(max_length=100)
+    description: str
+    tags: list[str] = Field(max_length=15)
+    hashtags: list[str] = Field(max_length=5)
+    thumbnail: ThumbnailOut

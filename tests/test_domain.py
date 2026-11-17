@@ -71,3 +71,35 @@ def test_events_have_titles_bodies_and_links():
         assert e.title and e.link.startswith("/") and isinstance(e.body, str)
     assert len(ev.JobFailed(1, 3, "s", "x" * 900).body) == 500
     assert ev.Event(1).title == "Event" and ev.Event(1).body == "" and ev.Event(1).link == "/"
+
+
+def test_upload_description_and_video_tags():
+    from ytstudio.domain.metadata import clean_video_text, hashtag_list, upload_description, video_tags
+
+    d = upload_description("Save rent.", ["rent tips", "#Rent", "Shorts"], "My Channel", made_here=True)
+    assert d.startswith("Save rent.\n\n#renttips #Rent #Shorts\n\n© My Channel.")
+    assert "AI-generated voice" in d and "Fluent Emoji" in d and d.endswith("acting on it.")
+    own = upload_description("Mine.\n\n#Rent", ["#rent", "#money"], "X", made_here=False)
+    assert own.startswith("Mine.\n\n#Rent\n\n#money\n\n© X.") and "AI-generated" not in own
+    assert upload_description(d, ["#more"], "My Channel", True).count("©") == 1  # pasted back: no second footer
+    assert hashtag_list("rent, #money  tips") == ["#rent", "#money", "#tips"]
+    assert clean_video_text("a <b> c", 100) == "a b c"
+    assert video_tags(["#rent", "Rent", "save money", "x" * 600]) == ["rent", "save money"]
+    assert sum(len(t) + 3 for t in video_tags([f"tag number {i}" for i in range(100)])) <= 500
+
+
+def test_english_words_are_said_the_same_way_every_time_by_the_hindi_voice():
+    from ytstudio.domain.speech import pronounce
+
+    assert pronounce("Maine Python aur AI se banaya.") == "Maine पायथन aur ए आई se banaya."
+    assert pronounce("Ye version 1 hai, v2.0 aayega.") == "Ye वर्ज़न वन hai, वी टू पॉइंट ज़ीरो aayega."
+    assert pronounce("Step 3: APIs aur SEO.") == "स्टेप थ्री: ए पी आईज़ aur एस ई ओ."
+    assert pronounce("step 21 mein 90% log") == "स्टेप ट्वेंटी वन mein 90% log"  # other numbers: the Devanagari copy
+    assert pronounce("किराया AI से कम करो।") == "किराया ए आई से कम करो।"
+
+
+def test_long_videos_are_2_to_3_minutes():
+    from ytstudio.domain.video import long_minutes, long_words
+
+    assert [long_minutes(m) for m in (1, 2, 3, 8)] == [2, 2, 3, 3]
+    assert long_words(8) == (350, 420) and long_words(2) == (210, 280)

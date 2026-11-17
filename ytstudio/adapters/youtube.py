@@ -52,6 +52,7 @@ COST = {
     "captions.download": 200,
     "channels.update": 50,
     "videos.insert": 1600,
+    "thumbnails.set": 50,
     "live.insert": 50,
     "live.bind": 50,
 }
@@ -598,6 +599,11 @@ class YouTubeGateway:
         except (OSError, TimeoutError, httplib2.HttpLib2Error, TransportError) as e:
             raise TransientError(f"network: {e}") from e
         return str(resp["id"])
+
+    def set_thumbnail(self, channel_id: str, video_id: str, path: str) -> None:
+        yt = self.service("youtube", "v3", channel_id)
+        media = MediaFileUpload(path, mimetype="image/jpeg")
+        self.execute(yt.thumbnails().set(videoId=video_id, media_body=media), COST["thumbnails.set"])
 
     def create_live(
         self, channel_id: str, title: str, description: str, privacy: str, start: datetime

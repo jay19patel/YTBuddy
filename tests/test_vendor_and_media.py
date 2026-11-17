@@ -314,7 +314,7 @@ def test_chatterbox_runs_its_own_python_or_its_server_and_never_falls_back_to_an
         served = narrator.ChatterboxNarrator(url=f"http://127.0.0.1:{srv.server_port}/")
         t = served.speak([("एक।", 0.25), ("दो।", 0.0)], "hi", tmp_path / "s.wav")
         assert [(x["start"], x["end"]) for x in t] == [(0.0, 1.0), (1.25, 2.25)]
-        assert asked == [{"lines": ["एक।", "दो।"], "lang": "hi"}]
+        assert asked == [{"lines": ["एक।", "दो।"], "lang": "hi", "take": 0}]
     finally:
         srv.shutdown()
     down = narrator.ChatterboxNarrator(url="http://127.0.0.1:9")  # nothing listens there
@@ -396,7 +396,8 @@ def test_chatterbox_sentences_are_cut_where_their_last_word_ends_and_babble_is_s
         return babble if len(calls) == 1 else babble[:5]
 
     cb = narrator.ChatterboxNarrator(url="http://x", listen=listen)
-    cb._say = lambda texts, language, work: [tone(1, 12000) + tone(2, 9000)] * len(texts)  # type: ignore[method-assign]
+    takes = []
+    cb._say = lambda texts, language, work, take: takes.append(take) or [tone(1, 12000) + tone(2, 9000)] * len(texts)  # type: ignore[method-assign]
     timings = cb.speak([("सिर्फ नंबर्स यहाँ चलते हैं।", 0.3)], "hi", tmp_path / "v.wav")
-    assert calls == ["hi", "hi"]
+    assert calls == ["hi", "hi"] and takes == [0, 1]  # the retake samples a new seed
     assert timings[0]["end"] < 2.3 and len(timings[0]["heard"]) == 5  # cut after "हैं" (1.78 s) and its fading tail

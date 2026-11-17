@@ -144,6 +144,47 @@ def test_a_short_script_video_uploads_as_a_short(container, user_and_channel, db
     page = client.get(f"/assets/{short_script.id}").text
     assert 'value="Stop overpaying rent"' in page and "One trick that cut my rent." in page and 'value="Shorts"' in page
     client.post(f"/assets/{short_script.id}/upload", data={"csrf": token, "privacy": "private"}, follow_redirects=False)
-    assert yt.uploaded[-1]["snippet"]["description"].endswith("#Shorts")
+    desc = yt.uploaded[-1]["snippet"]["description"]
+    assert "#Shorts" in desc and "©" in desc and "AI-generated voice" in desc  # the same footer as every upload
     nothing = client.post(f"/assets/{short_script.id + 5000}/upload", data={"csrf": token}, follow_redirects=False)
     assert nothing.status_code == 404
+
+
+def test_the_video_comes_with_a_thumbnail_that_can_be_made_again_alone_and_goes_to_youtube(
+    container, user_and_channel, db_url, yt
+):
+    user_id, long_script, _ = scripts(container, user_and_channel)
+    container.review.make_video(user_id, long_script.id)
+    with container.uow() as uow:
+        first = uow.assets.get(long_script.id, user_id).data
+    assert first["thumb_key"].startswith("thumbs/") and container.storage.exists(first["thumb_key"])
+    assert container.media["images"].thumbs[-1] == ("Rent Trap", "trap", "blue", "fire", False)
+    client, token = logged_in(db_url, user_id)
+    page = client.get(f"/assets/{long_script.id}").text
+    assert "Make a new thumbnail" in page and client.get(f"/files/asset/{long_script.id}/thumbnail").status_code == 200
+    videos = len(container.media["media"].videos)
+    container.clock.advance(5) if hasattr(container.clock, "advance") else None
+    r = client.post(
+        f"/scripts/{long_script.id}/thumbnail",
+        data={"csrf": token, "text": "My Own Words", "notes": "use a money sticker"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303 and "m=started" in r.headers["location"]
+    with container.uow() as uow:
+        second = uow.assets.get(long_script.id, user_id).data
+    assert len(container.media["media"].videos) == videos  # only the thumbnail was made again
+    # the creator's text wins; a sticker that does not exist falls back to one that does
+    assert second["thumb"]["text"] == "My Own Words" and second["thumb"]["sticker"] == "sparkles"
+    assert second["thumb"]["highlight"] == "Words" and second["video_key"] == first["video_key"]
+    if second["thumb_key"] != first["thumb_key"]:
+        assert not container.storage.exists(first["thumb_key"])
+    yt.thumb_refused = True  # e.g. the channel is not verified for custom thumbnails
+    client.post(f"/assets/{long_script.id}/upload", data={"csrf": token, "title": "T", "privacy": "private"})
+    page = client.get(f"/assets/{long_script.id}").text
+    assert len(yt.uploaded) == 1 and "did not take the thumbnail" in page and "Set this thumbnail on YouTube" in page
+    yt.thumb_refused = False
+    r = client.post(f"/assets/{long_script.id}/youtube-thumbnail", data={"csrf": token}, follow_redirects=False)
+    assert r.status_code == 303 and yt.thumbs == ["vid123"]
+    assert "This thumbnail is on YouTube." in client.get(f"/assets/{long_script.id}").text
+    client.post(f"/assets/{long_script.id}/delete", data={"csrf": token})
+    assert not container.storage.exists(second["thumb_key"])

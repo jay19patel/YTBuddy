@@ -5,7 +5,7 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from ytstudio.domain.errors import QuotaBudgetBlocked
+from ytstudio.domain.errors import PermanentError, QuotaBudgetBlocked
 from ytstudio.domain.events import Event
 from ytstudio.domain.models import Cue, OAuthToken, RetentionPoint, User, Video
 from ytstudio.domain.schedule import next_quota_reset
@@ -98,9 +98,17 @@ class FakeYouTube:
     calls: list[str] = field(default_factory=list)
     uploaded: list[dict[str, Any]] = field(default_factory=list)  # bodies of videos uploaded through the Publish page
 
+    thumbs: list[str] = field(default_factory=list)  # videos given a thumbnail
+    thumb_refused: bool = False
+
     def upload(self, channel_id: str, path: str, body: dict[str, Any]) -> str:
         self.uploaded.append(body)
         return "vid123"
+
+    def set_thumbnail(self, channel_id: str, video_id: str, path: str) -> None:
+        if self.thumb_refused:
+            raise PermanentError("The channel is not allowed to upload custom thumbnails.")
+        self.thumbs.append(video_id)
 
     def update_about(self, channel_id: str, description: str, keywords: str) -> None:
         self.calls.append(f"about:{channel_id}")
@@ -242,8 +250,18 @@ class FakeNarrator:
 
 
 class FakeImages:
+    def __init__(self) -> None:
+        self.thumbs: list[tuple[str, str, str, str, bool]] = []
+
     def cover(self, frame: Path, text: str, out: Path) -> None:
         out.write_bytes(b"cover")
+
+    def thumbnail(self, text: str, highlight: str, bg: str, sticker: Path | None, short: bool, out: Path) -> None:
+        self.thumbs.append((text, highlight, bg, sticker.stem if sticker else "", short))
+        out.write_bytes(b"thumb")
+
+    def to_jpeg(self, src: Path, out: Path) -> None:
+        out.write_bytes(src.read_bytes())
 
 
 class FakeTranscriber:
@@ -357,6 +375,19 @@ def llm_responses() -> dict[str, Any]:
                 {"window": 1, "start": 0, "end": 1, "first_line": "Rent trick two", "reason": "peak"},
                 {"window": 999, "start": 0, "end": 1, "first_line": "bogus", "reason": "out of range"},
             ]
+        },
+        "upload_meta": {
+            "title": "Python Setup on Mac in 5 Minutes",
+            "description": "Set up Python on a Mac in 5 minutes.",
+            "tags": ["python setup mac", "#python", "Python"],
+            "hashtags": ["python", "#coding"],
+            "thumbnail": {"text": "5 Min Setup", "highlight": "setup", "bg": "yellow", "sticker": "laptop"},
+        },
+        "thumbnail": lambda req: {
+            "text": req.variables["text"] or "Rent Trap",
+            "highlight": "trap",
+            "bg": "blue",
+            "sticker": "no_such_sticker" if req.variables["notes"] else "fire",
         },
         "short_meta": {
             "shorts": [{"title": "Rent trick #1", "description": "d1"}, {"title": "Rent trick #2", "description": "d2"}]

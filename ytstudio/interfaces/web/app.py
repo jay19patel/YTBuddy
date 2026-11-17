@@ -48,6 +48,7 @@ MESSAGES = {
     "master_deleted": "File deleted. Shorts already made from it are kept.",
     "short_uploaded": "Uploaded to YouTube. It now shows a green Uploaded tick with its link.",
     "busy": "Another run for this channel is active.",
+    "thumbnail_set": "The thumbnail is now on your YouTube video.",
 }
 
 

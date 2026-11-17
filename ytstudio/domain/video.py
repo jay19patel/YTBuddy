@@ -49,6 +49,28 @@ def detect_language(text: str) -> str:
     return "en"
 
 
+# Script length. Long videos are in-depth 2 to 3 minute explainers, Shorts 40 to 60 seconds; the narrator reads about
+# 140 words a minute. A draft outside the range is written again once (see long_script / short_script).
+LONG_MINUTES = (2, 3)
+WORDS_PER_MINUTE = 140
+SHORT_WORDS = (100, 150)
+
+
+def long_minutes(target: int) -> int:
+    """The channel's target length, kept within what a long video here is: 2 to 3 minutes."""
+    return min(max(target, LONG_MINUTES[0]), LONG_MINUTES[1])
+
+
+def long_words(target: int) -> tuple[int, int]:
+    """Words for the long script: half a minute of slack below the target, e.g. 3 minutes -> 350 to 420 words."""
+    m = long_minutes(target)
+    return m * WORDS_PER_MINUTE - WORDS_PER_MINUTE // 2, m * WORDS_PER_MINUTE
+
+
+def word_count(spoken: list[str]) -> int:
+    return sum(len(s.split()) for s in spoken)
+
+
 def spoken_text(data: dict[str, Any]) -> str:
     return " ".join(str(sec.get("spoken", "")) for sec in (data.get("script") or {}).get("sections", []))
 

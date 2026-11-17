@@ -106,6 +106,7 @@ class Queries:
                     "titles": [pair["title"] for pair in pk["data"].get("pairs", [])],
                     "description": seo.get("description", ""),
                     "tags": seo.get("tags", []),
+                    "hashtags": seo.get("hashtags", []),
                 }
             )
         return out

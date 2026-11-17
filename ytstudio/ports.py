@@ -183,10 +183,13 @@ class MediaProcessor(Protocol):
 
 class ImageRenderer(Protocol):
     def cover(self, frame: Path, text: str, out: Path) -> None: ...
+    def thumbnail(self, text: str, highlight: str, bg: str, sticker: Path | None, short: bool, out: Path) -> None: ...
+    def to_jpeg(self, src: Path, out: Path) -> None: ...  # any image -> a JPEG YouTube accepts as a thumbnail
 
 
 class Uploader(Protocol):
     def upload(self, channel_id: str, path: str, body: dict[str, Any]) -> str: ...  # returns the YouTube video id
+    def set_thumbnail(self, channel_id: str, video_id: str, path: str) -> None: ...
 
 
 class Storage(Protocol):

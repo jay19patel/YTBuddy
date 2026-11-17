@@ -181,7 +181,10 @@ def test_a_short_uploads_once_with_shorts_tag_and_is_marked_uploaded(container, 
     vid = container.shorts.publish(user_id, short.id, "My title", "About rent", ["Shorts", "rent"], "public", None, NOW)
     body = yt.uploaded[-1]
     assert vid == "vid123" and body["snippet"]["title"] == "My title" and body["snippet"]["tags"] == ["Shorts", "rent"]
-    assert body["snippet"]["description"].endswith("#Shorts") and body["status"]["privacyStatus"] == "public"
+    desc = body["snippet"]["description"]
+    assert desc.startswith("About rent\n\n#Shorts\n\n©") and body["status"]["privacyStatus"] == "public"
+    assert "AI-generated" not in desc  # cut from your own footage: no AI-voice credits
+    assert yt.thumbs == ["vid123"]  # the Short's cover is its thumbnail
     with container.uow() as uow:
         saved = uow.assets.get(short.id, user_id)
     assert saved.data["youtube_id"] == "vid123" and saved.status == "approved" and saved.title == "My title"

@@ -138,6 +138,12 @@ def make_video(script_id: int, voice: str = Form(""), p: Page = Depends(csrf)) -
     return started(f"/assets/{script_id}", get_container().review.make_video(p.user.id, script_id, voice))
 
 
+@router.post("/scripts/{script_id}/thumbnail")
+def make_thumbnail(script_id: int, text: str = Form(""), notes: str = Form(""), p: Page = Depends(csrf)) -> Response:
+    """Only the thumbnail again; the video stays as it is."""
+    return started(f"/assets/{script_id}", get_container().review.make_thumbnail(p.user.id, script_id, text, notes))
+
+
 @router.post("/ideas/{idea_id}/develop")
 def develop(idea_id: int, language: str = Form(""), p: Page = Depends(csrf)) -> Response:
     """Write the script for an idea; the page follows the run and opens the script when it is ready."""
@@ -146,7 +152,8 @@ def develop(idea_id: int, language: str = Form(""), p: Page = Depends(csrf)) -> 
 
 def upload_context(p: Page, a: dict[str, Any]) -> dict[str, Any]:
     """What the upload form starts with: a Short's own title and description; for a long video the best title from its
-    package and the description and tags from its SEO (they hang under the same idea as the script)."""
+    package and the description, tags and hashtags from its SEO (they hang under the same idea as the script). The
+    copyright line, credits and disclaimer are added when it is uploaded, the same for every video."""
     d = a["data"]
     with get_container().uow() as uow:
         tz = uow.schedules.get(a["channel_id"]).timezone
@@ -159,7 +166,8 @@ def upload_context(p: Page, a: dict[str, Any]) -> dict[str, Any]:
         prefill = {
             "title": d.get("title") or a["title"],
             "description": d.get("description", ""),
-            "tags": ", ".join(["Shorts", *extra]),
+            "tags": ", ".join([*d.get("tags", []), "Shorts", *extra]),
+            "hashtags": " ".join(d.get("hashtags", [])),
         }
     else:
         made = queries().developed(p.user.id, a["channel_id"], a["parent_id"]) if a["parent_id"] else {}
@@ -169,6 +177,7 @@ def upload_context(p: Page, a: dict[str, Any]) -> dict[str, Any]:
             "title": pairs[0]["title"] if pairs else a["title"],
             "description": seo.get("description", ""),
             "tags": ", ".join(seo.get("tags", [])),
+            "hashtags": " ".join(seo.get("hashtags", [])),
         }
     return {"prefill": prefill, "tz": tz}
 

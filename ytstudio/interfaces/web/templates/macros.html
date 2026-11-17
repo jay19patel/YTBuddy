@@ -31,13 +31,19 @@
 </div>
 {%- endmacro %}
 
-{% macro upload_form(id, title, description, tags, tz, is_short, next) -%}
+{% macro upload_hints(is_short) -%}
+<p class="hint">Added to the end of the description when it is uploaded: the hashtags{% if is_short %} and #Shorts{% endif %}, a copyright line, credits and a short disclaimer. Every upload gets the same.</p>
+{%- endmacro %}
+
+{% macro upload_form(id, title, description, tags, tz, is_short, next, hashtags="", thumb=False) -%}
 <form class="up-form" method="post" action="/assets/{{ id }}/upload">
   <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="next" value="{{ next }}">
-  <details class="edit"><summary>Upload settings: title, description, tags, schedule</summary>
+  <details class="edit"><summary>Upload settings: title, description, tags, hashtags, schedule</summary>
     <div class="row"><label class="field" for="t{{ id }}">Title</label><input type="text" id="t{{ id }}" name="title" value="{{ title }}" maxlength="100"></div>
-    <div class="row"><label class="field" for="d{{ id }}">Description</label><textarea id="d{{ id }}" name="description" rows="5">{{ description }}</textarea>{% if is_short %}<p class="hint">#Shorts is added for you.</p>{% endif %}</div>
+    <div class="row"><label class="field" for="d{{ id }}">Description</label><textarea id="d{{ id }}" name="description" rows="6">{{ description }}</textarea>{{ upload_hints(is_short) }}</div>
     <div class="row"><label class="field" for="g{{ id }}">Tags</label><input type="text" id="g{{ id }}" name="tags" value="{{ tags }}"><p class="hint">Separate with commas.</p></div>
+    <div class="row"><label class="field" for="h{{ id }}">Hashtags</label><input type="text" id="h{{ id }}" name="hashtags" value="{{ hashtags }}" placeholder="#python #coding"><p class="hint">3 to 5. The first three show above the title.</p></div>
+    {% if thumb %}<p class="hint">The thumbnail shown on this page is set on YouTube with the upload.</p>{% endif %}
     <div class="row"><label class="field" for="p{{ id }}">Schedule (optional)</label><input type="datetime-local" id="p{{ id }}" name="publish_at"><p class="hint">Time zone: {{ tz }}. Leave empty to use the visibility below right away.</p></div>
   </details>
   <div class="actions">
@@ -80,7 +86,7 @@
 </div>
 {%- endmacro %}
 
-{% set RUN_TITLES = {"daily": "Daily brief", "develop": "Writing the script", "shorts": "Making Shorts", "script_video": "Making the video"} %}
+{% set RUN_TITLES = {"daily": "Daily brief", "develop": "Writing the script", "shorts": "Making Shorts", "script_video": "Making the video", "thumbnail": "Making the thumbnail"} %}
 {% set STEP_INFO = {
   "sync_channel": ("Sync channel stats", "Reads your latest channel numbers from YouTube."),
   "fetch_performance": ("Read your recent videos", "Pulls views and retention for your last uploads."),
@@ -104,6 +110,8 @@
   "speech_text": ("Prepare the Hindi reading", "For a Hinglish script read by Chatterbox: a Devanagari copy of each sentence, so the Hindi voice reads it naturally."),
   "narrate_script": ("Create the voice", "Chatterbox reads the script aloud on your Mac. A long script takes a few minutes."),
   "render_script_video": ("Draw the video", "Draws every scene to the voice and ends on the outro. A long script can take a few minutes."),
+  "plan_thumbnail": ("Design the thumbnail", "The AI picks the words, the boxed word, the colour and the sticker."),
+  "draw_thumbnail": ("Draw the thumbnail", "Draws it in the video's look."),
 } %}
 
 {% macro stepper(run) -%}

@@ -67,9 +67,32 @@
       {% if not d.video_key and flags.publish %}<p class="hint">After the video is made, the Upload to YouTube button appears here.</p>{% endif %}
       {% if d.video_key %}
         {% if d.youtube_id %}{{ m.uploaded_box(d) }}
-        {% elif flags.publish and prefill %}{{ m.upload_form(a.id, prefill.title, prefill.description, prefill.tags, tz, (d | asset_format) == "short", "/assets/" ~ a.id) }}{% endif %}
+        {% elif flags.publish and prefill %}{{ m.upload_form(a.id, prefill.title, prefill.description, prefill.tags, tz, (d | asset_format) == "short", "/assets/" ~ a.id, prefill.hashtags, d.thumb_key) }}{% endif %}
       {% endif %}
       <p class="hint">A natural neural voice reads the script; the voices listed match its language ({{ script_lang | language_name }}), and automatic picks the best one. The video is planned from it automatically: bold colour scenes, every word on screen the moment it is said, 3D stickers and your brand ({{ "vertical, for a Short" if (d | asset_format) == "short" else "widescreen, for a long video" }}). Takes a minute or two. {% if d.video_engine %}Last voice: {{ d.video_engine }}. {% endif %}Nothing is uploaded.</p>
+    </div>
+    <div class="video-box">
+      <h3 class="!mt-0">Thumbnail</h3>
+      {% if d.thumb_key %}
+        <img class="thumb {{ 'tall' if (d | asset_format) == 'short' else 'wide' }}" src="/files/asset/{{ a.id }}/thumbnail?v={{ d.thumb_made_at }}" alt="Thumbnail: {{ d.thumb.text }}">
+        <div class="actions">
+          <a class="btn small" href="/files/asset/{{ a.id }}/thumbnail?download=1">Download thumbnail (JPG)</a>
+          {% if d.youtube_id and flags.publish %}
+            {% if d.thumb_on_youtube == d.thumb_key %}<span class="hint !mt-0">This thumbnail is on YouTube.</span>
+            {% else %}<form method="post" action="/assets/{{ a.id }}/youtube-thumbnail"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn small" type="submit" data-busy="Setting…"><i data-lucide="upload"></i>Set this thumbnail on YouTube</button></form>{% endif %}
+          {% endif %}
+        </div>
+        {% if d.thumb_error %}<p class="err-text">YouTube did not take the thumbnail: {{ d.thumb_error }} Custom thumbnails need a verified channel (youtube.com/verify). Download it and set it in YouTube Studio, or verify and press Set this thumbnail on YouTube.</p>{% endif %}
+      {% endif %}
+      <form method="post" action="/scripts/{{ a.id }}/thumbnail">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <label class="field" for="thumb-text">Text on the thumbnail <span class="muted">(optional, 2 to 5 words; leave empty and the AI writes it)</span></label>
+        <input type="text" id="thumb-text" name="text" maxlength="40" placeholder="{{ d.thumb.text if d.thumb else 'e.g. Stop doing this' }}">
+        <label class="field" for="thumb-notes">Instructions for the design <span class="muted">(optional)</span></label>
+        <textarea id="thumb-notes" name="notes" rows="2" maxlength="500" placeholder="e.g. red background, money sticker, make it feel urgent"></textarea>
+        <div class="actions"><button class="btn" type="submit" data-busy="Starting…"><i data-lucide="image"></i>{{ "Make a new thumbnail" if d.thumb_key else "Make thumbnail" }}</button></div>
+      </form>
+      <p class="hint">Made with the video: big words with one word boxed, a bold colour and a 3D sticker, in the video's look ({{ "1080x1920" if (d | asset_format) == "short" else "1280x720" }}). Making a new one redraws only the thumbnail; the video stays. It is set on YouTube when you upload.</p>
     </div>
     {% if d.format == "short" %}
       <h3>Title <button class="copy" type="button" data-copy="{{ d.title }}">Copy</button></h3><p>{{ d.title }}</p>

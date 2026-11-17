@@ -210,6 +210,7 @@ if (form) {
     put("u-title", titles[0] || "");
     put("u-desc", JSON.parse(o.dataset.description));
     put("u-tags", tags.join(", "));
+    put("u-hashtags", JSON.parse(o.dataset.hashtags || "[]").join(" "));
     document.querySelector("[data-title-options]").replaceChildren(...titles.slice(1).map((t) => {
       const b = document.createElement("button");
       b.type = "button";
@@ -219,11 +220,70 @@ if (form) {
       return b;
     }));
   });
+
+  // Write with AI and the thumbnail: the same rules and look as the videos made here.
+  const val = (id) => document.getElementById(id).value;
+  const mode = () => (document.getElementById("m-short").checked ? "short" : "video");
+  const thumbKey = document.getElementById("u-thumb-key"), thumbImg = document.getElementById("u-thumb");
+  const thumbStatus = document.querySelector("[data-thumb-status]");
+  const send = async (url, fd) => {
+    const r = await fetch(url, { method: "POST", headers: { "X-CSRF-Token": csrf }, body: fd });
+    const out = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(out.detail || "Something went wrong. Try again.");
+    return out;
+  };
+  const setThumb = (out) => {
+    thumbKey.value = out.thumb_key;
+    thumbImg.src = out.thumb_url;
+    thumbImg.hidden = false;
+    document.querySelector("[data-thumb-empty]").hidden = true;
+    if (out.thumb) document.getElementById("u-thumb-text").placeholder = out.thumb.text;
+  };
+  const busy = async (btn, statusEl, waiting, done, work) => {
+    btn.disabled = true;
+    statusEl.textContent = waiting;
+    try { await work(); statusEl.textContent = done; }
+    catch (err) { statusEl.textContent = err.message; }
+    finally { btn.disabled = false; }
+  };
+  const aiGo = document.querySelector("[data-ai-go]");
+  if (aiGo) aiGo.addEventListener("click", () => busy(aiGo, document.querySelector("[data-ai-status]"),
+    "Writing… this takes about 20 seconds.", "Done. Read it through and change anything you like.", async () => {
+      const fd = new FormData();
+      [["about", val("u-about")], ["title", val("u-title")], ["language", val("u-lang")], ["mode", mode()], ["old", thumbKey.value]]
+        .forEach(([k, v]) => fd.append(k, v));
+      const out = await send("/publish/write", fd);
+      document.getElementById("u-title").value = out.title;
+      document.getElementById("u-desc").value = out.description;
+      document.getElementById("u-tags").value = out.tags.join(", ");
+      document.getElementById("u-hashtags").value = out.hashtags.join(" ");
+      setThumb(out);
+    }));
+  const thumbGo = document.querySelector("[data-thumb-go]");
+  if (thumbGo) thumbGo.addEventListener("click", () => busy(thumbGo, thumbStatus,
+    "Designing a new thumbnail…", "New thumbnail ready.", async () => {
+      const fd = new FormData();
+      [["title", val("u-title")], ["about", val("u-about")], ["text", val("u-thumb-text")], ["notes", val("u-thumb-notes")], ["mode", mode()], ["old", thumbKey.value]]
+        .forEach(([k, v]) => fd.append(k, v));
+      setThumb(await send("/publish/thumbnail", fd));
+    }));
+  const own = document.querySelector("[data-thumb-own]");
+  if (own) own.addEventListener("change", () => {
+    if (!own.files[0]) return;
+    busy(thumbGo, thumbStatus, "Adding your image…", "Your image will be the thumbnail.", async () => {
+      const fd = new FormData();
+      fd.append("image", own.files[0]);
+      fd.append("old", thumbKey.value);
+      setThumb(await send("/publish/thumbnail/own", fd));
+      own.value = "";
+    });
+  });
+
   ["dragenter", "dragover"].forEach((e) => drop.addEventListener(e, () => drop.classList.add("drag")));
   ["dragleave", "drop"].forEach((e) => drop.addEventListener(e, () => drop.classList.remove("drag")));
   form.addEventListener("submit", (e) => {
     e.preventDefault();
-    const btn = form.querySelector("button"), status = document.getElementById("status"), bar = document.getElementById("bar");
+    const btn = form.querySelector("button[type=submit]"), status = document.getElementById("status"), bar = document.getElementById("bar");
     btn.disabled = true;
     form.classList.add("uploading");
     const xhr = new XMLHttpRequest();

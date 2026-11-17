@@ -1,16 +1,27 @@
 """Use cases. They depend on ports and the domain only."""
 
 import logging
+import tempfile
 from dataclasses import replace
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from ytstudio.application import thumbnails
 from ytstudio.application.pipeline import PipelineRunner, StartResult
-from ytstudio.application.schemas import ChannelProfileOut, ChannelSetupOut
+from ytstudio.application.schemas import ChannelProfileOut, ChannelSetupOut, ThumbnailOut, UploadMetaOut
+from ytstudio.application.steps_daily import LANG_NAMES
 from ytstudio.domain.errors import DomainError, NotFound, PermanentError, ReconnectNeeded
 from ytstudio.domain.events import ChannelNeedsReconnect, Event
-from ytstudio.domain.metadata import clean_description, format_keywords
+from ytstudio.domain.metadata import (
+    VIDEO_DESCRIPTION_MAX,
+    clean_description,
+    clean_video_text,
+    format_keywords,
+    upload_description,
+    video_tags,
+)
 from ytstudio.domain.metrics import median_views, top_and_bottom
 from ytstudio.domain.models import (
     Asset,
@@ -30,6 +41,7 @@ from ytstudio.domain.video import LANGUAGE_IDS, VOICES
 from ytstudio.ports import (
     Analytics,
     Clock,
+    ImageRenderer,
     LLMRequest,
     Notifier,
     OAuthProvider,
@@ -412,12 +424,12 @@ class Review:
             files = [
                 k
                 for x in (a, *uow.assets.children(asset_id, user_id))
-                for k in (x.data.get("video_key"), x.data.get("audio_key"))
+                for k in (x.data.get("video_key"), x.data.get("audio_key"), x.data.get("thumb_key"))
                 if k
             ]
             uow.assets.delete(asset_id, user_id)
             uow.commit()
-        for key in files:  # the voice-over and video made from a deleted script go with it
+        for key in files:  # the voice-over, video and thumbnail made from a deleted script go with it
             self.storage.delete(key)
         return a
 
@@ -504,6 +516,22 @@ class Review:
         key = f"{a.channel_id}:video:{a.id}:{int(self.clock.now().timestamp())}"
         return self.runner.start(user_id, a.channel_id, "script_video", key, inputs)
 
+    def make_thumbnail(self, user_id: int, script_asset_id: int, text: str = "", notes: str = "") -> StartResult:
+        """Design and draw only the thumbnail again: with `text` exactly on it, following `notes` if given."""
+        with self.uow() as uow:
+            a = uow.assets.get(script_asset_id, user_id)
+        if a.kind != "script":
+            raise PermanentError("Only a script's video gets a thumbnail.")
+        inputs = {
+            "asset_id": a.id,
+            "thumb_text": text.strip()[:40],
+            "thumb_notes": notes.strip()[:500],
+            "attempt": int(a.data.get("thumb_attempts") or 0),
+            "regenerate": True,  # a fresh design, not the cached answer
+        }
+        key = f"{a.channel_id}:thumb:{a.id}:{int(self.clock.now().timestamp())}"
+        return self.runner.start(user_id, a.channel_id, "thumbnail", key, inputs)
+
     def develop(self, user_id: int, idea_asset_id: int, language: str = "") -> StartResult:
         """Write the script (and for a long video its package and SEO). `language` overrides the idea's own."""
         with self.uow() as uow:
@@ -534,6 +562,7 @@ class Shorts:
         privacy: str,
         publish_at: datetime | None,
         now: datetime,
+        hashtags: list[str] | None = None,
     ) -> str:
         """Upload a rendered Short, or the video made from a script (a Short or a long video), when the user presses
         the button. Returns the YouTube video id."""
@@ -543,38 +572,127 @@ class Shorts:
             raise PermanentError("Only a rendered Short, or a script with its video made, can be uploaded.")
         if a.data.get("youtube_id"):
             raise PermanentError(f"This video is already on YouTube: https://youtu.be/{a.data['youtube_id']}")
-        if privacy not in PRIVACY:
-            raise PermanentError("Pick private, unlisted or public.")
-        is_short = a.kind == "short" or format_of(a.data) == "short"
-        title = (title.strip() or str(a.data.get("title") or a.title))[:100]
-        description = description.strip()
-        if is_short and "#shorts" not in (title + description).lower():
-            description = f"{description}\n\n#Shorts".strip()  # YouTube uses the tag to classify the video as a Short
-        status: dict[str, Any] = {"privacyStatus": privacy, "selfDeclaredMadeForKids": False}
-        if publish_at:  # uploaded as private now, YouTube makes it public at that time
-            status = {**status, "privacyStatus": "private", "publishAt": publish_at.strftime("%Y-%m-%dT%H:%M:%SZ")}
-        body = {
-            "snippet": {"title": title, "description": description, "tags": tags[:15], "categoryId": "22"},
-            "status": status,
-        }
-        video_id = self.youtube.upload(a.channel_id, str(self.storage.get(a.data["video_key"])), body)
+        sent = self._send(
+            user_id,
+            a.channel_id,
+            self.storage.get(a.data["video_key"]),
+            title.strip() or str(a.data.get("title") or a.title),
+            description,
+            tags,
+            a.data.get("hashtags", []) if hashtags is None else hashtags,
+            privacy,
+            publish_at,
+            is_short=a.kind == "short" or format_of(a.data) == "short",
+            made_here=a.kind == "script",  # a Short cut from your own footage has no AI voice or stickers
+            thumb_key=a.data.get("thumb_key") or a.data.get("cover_key"),  # a Short cut from footage has a cover
+        )
         with self.uow() as uow:
             a = uow.assets.get(asset_id, user_id)
             a.status = AssetStatus.APPROVED
             if a.kind == "short":  # a script keeps the idea's name; the video's own title is stored below
-                a.title = title
-            a.data = {
-                **a.data,
-                "youtube_title": title,
-                "youtube_description": description,
-                "youtube_id": video_id,
-                "uploaded_at": now.isoformat(),
-                "privacy": status["privacyStatus"],
-                "publish_at": publish_at.isoformat() if publish_at else None,
-            }
+                a.title = sent["youtube_title"]
+            a.data = {**a.data, **sent, "uploaded_at": now.isoformat()}
             uow.assets.update(a)
             uow.commit()
-        return video_id
+        return str(sent["youtube_id"])
+
+    def upload_file(
+        self,
+        user_id: int,
+        channel_id: str,
+        path: Path,
+        title: str,
+        description: str,
+        tags: list[str],
+        hashtags: list[str],
+        privacy: str,
+        publish_at: datetime | None,
+        is_short: bool,
+        thumb_key: str | None,
+    ) -> dict[str, Any]:
+        """Upload a video file from the Publish page, to the same standard as a video made here."""
+        if thumb_key and not thumb_key.startswith(f"thumbs/{channel_id}/"):
+            raise PermanentError("That thumbnail belongs to another channel.")
+        if not title.strip():
+            raise PermanentError("Give the video a title.")
+        return self._send(
+            user_id,
+            channel_id,
+            path,
+            title,
+            description,
+            tags,
+            hashtags,
+            privacy,
+            publish_at,
+            is_short,
+            False,
+            thumb_key,
+        )
+
+    def _send(
+        self,
+        user_id: int,
+        channel_id: str,
+        path: Path,
+        title: str,
+        description: str,
+        tags: list[str],
+        hashtags: list[str],
+        privacy: str,
+        publish_at: datetime | None,
+        is_short: bool,
+        made_here: bool,
+        thumb_key: str | None,
+    ) -> dict[str, Any]:
+        """Every upload goes through here, so every video gets the same text rules: a clean title, the description
+        with its hashtags, copyright line, credits and disclaimer, tags YouTube accepts, and the thumbnail."""
+        if privacy not in PRIVACY:
+            raise PermanentError("Pick private, unlisted or public.")
+        with self.uow() as uow:
+            channel = uow.channels.get(channel_id, user_id).title
+        if is_short:  # YouTube uses the tag to classify the video as a Short
+            hashtags = [*hashtags, "#Shorts"]
+        title = clean_video_text(title, 100)
+        description = clean_video_text(
+            upload_description(description, hashtags, channel, made_here), VIDEO_DESCRIPTION_MAX
+        )
+        status: dict[str, Any] = {"privacyStatus": privacy, "selfDeclaredMadeForKids": False}
+        if publish_at:  # uploaded as private now, YouTube makes it public at that time
+            status = {**status, "privacyStatus": "private", "publishAt": publish_at.strftime("%Y-%m-%dT%H:%M:%SZ")}
+        body = {
+            "snippet": {"title": title, "description": description, "tags": video_tags(tags), "categoryId": "22"},
+            "status": status,
+        }
+        video_id = self.youtube.upload(channel_id, str(path), body)
+        sent: dict[str, Any] = {
+            "youtube_title": title,
+            "youtube_description": description,
+            "youtube_id": video_id,
+            "privacy": status["privacyStatus"],
+            "publish_at": publish_at.isoformat() if publish_at else None,
+        }
+        if thumb_key:  # the video is already up: a refused thumbnail is shown on the page, never fails the upload
+            try:
+                self.youtube.set_thumbnail(channel_id, video_id, str(self.storage.get(thumb_key)))
+                sent |= {"thumb_on_youtube": thumb_key, "thumb_error": None}
+            except DomainError as e:
+                log.warning("thumbnail not set on %s: %s", video_id, e)
+                sent["thumb_error"] = str(e)
+        return sent
+
+    def set_thumbnail(self, user_id: int, asset_id: int) -> None:
+        """Put the current thumbnail on the video already uploaded from this script."""
+        with self.uow() as uow:
+            a = uow.assets.get(asset_id, user_id)
+        if not a.data.get("youtube_id") or not a.data.get("thumb_key"):
+            raise PermanentError("Upload the video and make a thumbnail first.")
+        self.youtube.set_thumbnail(a.channel_id, a.data["youtube_id"], str(self.storage.get(a.data["thumb_key"])))
+        with self.uow() as uow:
+            a = uow.assets.get(asset_id, user_id)
+            a.data = {**a.data, "thumb_on_youtube": a.data["thumb_key"], "thumb_error": None}
+            uow.assets.update(a)
+            uow.commit()
 
     def start(self, user_id: int, media_id: int) -> StartResult:
         with self.uow() as uow:
@@ -629,3 +747,87 @@ class Shorts:
                 return []
             files: list[MediaFile] = uow.media.ready_for_videos(channel_id, video_ids)
         return [self.start(m.user_id, m.id) for m in files]
+
+
+class Packaging:
+    """The Publish page's "Write with AI": title, description, tags, hashtags and a thumbnail for a video you made
+    elsewhere, by the same rules and in the same thumbnail look as a video made here. Nothing is uploaded."""
+
+    def __init__(self, uow: UowFactory, llm: Any, images: ImageRenderer, storage: Storage, clock: Clock):
+        self.uow, self.llm, self.images, self.storage, self.clock = uow, llm, images, storage, clock
+
+    def _ask(self, user_id: int, channel_id: str, template: str, variables: dict[str, Any], schema: Any) -> Any:
+        with self.uow() as uow:
+            ch = uow.channels.get(channel_id, user_id)
+            sched = uow.schedules.get(channel_id)
+        language = variables.get("language") if variables.get("language") in LANGUAGE_IDS else sched.language
+        req = LLMRequest(
+            alias="smart",
+            template=template,
+            user_id=user_id,
+            step=template,
+            regenerate=True,  # pressing the button again should give a fresh take, not the cached one
+            variables={
+                "channel": ch.title,
+                "niche": sched.niche or "not set",
+                "stickers": thumbnails.stickers(),
+                **variables,
+                "language": LANG_NAMES.get(str(language), str(language)),
+            },
+        )
+        return self.llm.generate(req, schema)
+
+    def _draw(self, channel_id: str, design: dict[str, Any], short: bool, old: str) -> str:
+        key = thumbnails.draw(self.images, self.storage, self.clock, design, short, f"{channel_id}/upload")
+        if old.startswith(f"thumbs/{channel_id}/upload-") and old != key:  # the draft it replaces
+            self.storage.delete(old)
+        return key
+
+    def write(
+        self, user_id: int, channel_id: str, about: str, title: str, short: bool, language: str, old: str = ""
+    ) -> dict[str, Any]:
+        about = about.strip()
+        if len(about) < 10:
+            raise PermanentError("Write a line or two about the video first: what it shows and who it is for.")
+        v = {"about": about[:3000], "title": title.strip()[:100], "format": "short" if short else "long"}
+        out = self._ask(user_id, channel_id, "upload_meta", v | {"language": language}, UploadMetaOut)
+        design = thumbnails.finish(out.thumbnail.model_dump(), "", out.title, [])
+        return {
+            "title": clean_video_text(out.title, 100),
+            "description": out.description.strip(),
+            "tags": video_tags(out.tags),
+            "hashtags": [f"#{h.lstrip('#')}" for h in out.hashtags],
+            "thumb": design,
+            "thumb_key": self._draw(channel_id, design, short, old),
+        }
+
+    def redesign(
+        self, user_id: int, channel_id: str, title: str, about: str, text: str, notes: str, short: bool, old: str = ""
+    ) -> dict[str, Any]:
+        """A new thumbnail only: `text` exactly on it if given, following `notes`."""
+        v: dict[str, Any] = {
+            "title": title.strip()[:100] or about.strip()[:100],
+            "format": "short" if short else "long",
+            "opening": about.strip()[:600],
+            "suggested": [],
+            "text": text.strip()[:40],
+            "notes": notes.strip()[:500],
+            "attempt": int(self.clock.now().timestamp()) % 1000,
+        }
+        try:
+            design = self._ask(user_id, channel_id, "thumbnail", v, ThumbnailOut).model_dump()
+        except Exception as e:
+            log.warning("thumbnail design failed (%s); a plain one is drawn from the title", e)
+            design = {}
+        design = thumbnails.finish(design, v["text"], v["title"], [])
+        return {"thumb": design, "thumb_key": self._draw(channel_id, design, short, old)}
+
+    def own_image(self, channel_id: str, src: Path, old: str = "") -> str:
+        """Your own thumbnail image, made a JPEG YouTube takes (under 2 MB)."""
+        with tempfile.TemporaryDirectory() as d:
+            out = Path(d) / "thumb.jpg"
+            self.images.to_jpeg(src, out)
+            key = self.storage.put(out, f"thumbs/{channel_id}/upload-{int(self.clock.now().timestamp() * 1000)}.jpg")
+        if old.startswith(f"thumbs/{channel_id}/upload-") and old != key:
+            self.storage.delete(old)
+        return key

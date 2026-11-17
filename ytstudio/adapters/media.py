@@ -15,7 +15,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
 
 from ytstudio.domain.errors import PermanentError
 from ytstudio.domain.models import Cue
@@ -270,6 +270,118 @@ class PillowImageRenderer:
         part = out.with_name(f".{out.name}.part.jpg")
         img.save(part, "JPEG", quality=90)
         os.replace(part, out)
+
+    def thumbnail(self, text: str, highlight: str, bg: str, sticker: Path | None, short: bool, out: Path) -> None:
+        """A thumbnail in the videos' look: flat palette colour, huge Bebas Neue words with one word boxed, and a big
+        3D sticker. 1280x720 for a long video, 1080x1920 for a Short."""
+        from pipeline.theme import PALETTE
+
+        w, h = (1080, 1920) if short else (1280, 720)
+        base = _rgb(PALETTE.get(bg, PALETTE["black"]))
+        light = sum(base) > 450
+        img = Image.new("RGB", (w, h), base)
+        d = ImageDraw.Draw(img)
+        shade = (
+            tuple(min(255, c + 24) for c in base)
+            if sum(base) < 90
+            else tuple(int(c * (0.86 if light else 0.7)) for c in base)
+        )
+        area: tuple[float, float, float, float]
+        if short:
+            d.polygon([(0, h * 0.62), (w, h * 0.5), (w, h), (0, h)], fill=shade)
+            spot, size, area = (w * 0.5, h * 0.76), int(w * 0.68), (70, 200, w - 70, h * 0.56)
+        else:
+            d.polygon([(w * 0.62, 0), (w, 0), (w, h), (w * 0.52, h)], fill=shade)
+            spot, size, area = (w * 0.78, h * 0.52), int(h * 0.82), (56, 50, w * 0.6, h - 50)
+        if sticker and sticker.exists():
+            s = Image.open(sticker).convert("RGBA")
+            s = s.resize((size, size * s.height // s.width), Image.Resampling.LANCZOS).rotate(
+                -8, expand=True, resample=Image.Resampling.BICUBIC
+            )
+            shadow = Image.new("RGBA", s.size, (0, 0, 0, 0))
+            shadow.putalpha(s.getchannel("A").point(lambda a: a * 0.45))
+            shadow = shadow.filter(ImageFilter.GaussianBlur(18))
+            sx, sy = int(spot[0] - s.width / 2), int(spot[1] - s.height / 2)
+            img.paste(shadow, (sx + 14, sy + 22), shadow)
+            img.paste(s, (sx, sy), s)
+        ink = _rgb(PALETTE["ink"] if light else PALETTE["white"])
+        accent = _rgb(PALETTE["crimson"] if bg in ("yellow", "orange", "beige") else PALETTE["yellow"])
+        accent_ink = _rgb(PALETTE["white"] if accent == _rgb(PALETTE["crimson"]) else PALETTE["ink"])
+        devanagari = any("ऀ" <= ch <= "ॿ" for ch in text)
+        words = (text if devanagari else text.upper()).split()
+        marked = {_bare(x) for x in highlight.split()}
+        f, lines = _fit_words(d, words, area[2] - area[0], area[3] - area[1], devanagari)
+        cap = f.getbbox("H")[3] - f.getbbox("H")[1]
+        step, pad = int(cap * 1.32), int(cap * 0.16)
+        y = area[1] + ((area[3] - area[1]) - (step * len(lines) - (step - cap))) / 2 + cap
+        for line in lines:
+            x = area[0] + (((area[2] - area[0]) - d.textlength(" ".join(line), font=f)) / 2 if short else 0)
+            for word in line:
+                lw = d.textlength(word, font=f)
+                if _bare(word) in marked:
+                    d.rectangle([x - pad, y - cap - pad, x + lw + pad, y + pad], fill=accent)
+                    d.text((x, y), word, font=f, fill=accent_ink, anchor="ls")
+                else:
+                    if not light:  # a hard shadow keeps white words readable at phone size
+                        d.text((x + 5, y + 6), word, font=f, fill=(0, 0, 0), anchor="ls")
+                    d.text((x, y), word, font=f, fill=ink, anchor="ls")
+                x += lw + d.textlength(" ", font=f) + pad
+            y += step
+        part = out.with_name(f".{out.name}.part.jpg")
+        img.save(part, "JPEG", quality=92)
+        os.replace(part, out)
+
+    def to_jpeg(self, src: Path, out: Path) -> None:
+        """Any image as a JPEG of at most 1920 px a side and under YouTube's 2 MB thumbnail limit."""
+        try:
+            img = ImageOps.exif_transpose(Image.open(src)).convert("RGB")
+        except (OSError, ValueError) as e:
+            raise PermanentError("That file is not an image. Use a JPG or PNG.") from e
+        img.thumbnail((1920, 1920))
+        part = out.with_name(f".{out.name}.part.jpg")
+        for quality in (90, 80, 70, 60):
+            img.save(part, "JPEG", quality=quality)
+            if part.stat().st_size < 2_000_000:
+                break
+        os.replace(part, out)
+
+
+def _rgb(hex_colour: str) -> tuple[int, int, int]:
+    return tuple(int(hex_colour[i : i + 2], 16) for i in (1, 3, 5))  # type: ignore[return-value]
+
+
+def _bare(word: str) -> str:
+    return "".join(ch for ch in word.lower() if ch.isalnum())
+
+
+def _thumb_font(size: int, devanagari: bool) -> ImageFont.FreeTypeFont:
+    fonts = Path(__file__).resolve().parents[2] / "assets" / "fonts"
+    f = ImageFont.truetype(str(fonts / ("NotoSansDevanagari.ttf" if devanagari else "BebasNeue-Regular.ttf")), size)
+    if devanagari:
+        try:
+            f.set_variation_by_name("Bold")
+        except (OSError, ValueError):
+            pass
+    return f
+
+
+def _fit_words(
+    d: ImageDraw.ImageDraw, words: list[str], width: float, height: float, devanagari: bool
+) -> tuple[ImageFont.FreeTypeFont, list[list[str]]]:
+    """The biggest font that fits the words in at most 3 lines inside width x height, and those lines."""
+    for size in range(300, 40, -6):
+        f = _thumb_font(size, devanagari)
+        space = d.textlength(" ", font=f) + size * 0.04
+        lines: list[list[str]] = [[]]
+        for word in words:
+            if lines[-1] and d.textlength(" ".join([*lines[-1], word]), font=f) + space * len(lines[-1]) > width:
+                lines.append([])
+            lines[-1].append(word)
+        cap = f.getbbox("H")[3] - f.getbbox("H")[1]
+        widest = max(d.textlength(" ".join(line), font=f) + space * len(line) for line in lines)
+        if len(lines) <= 3 and widest <= width and cap * 1.32 * len(lines) <= height:
+            return f, lines
+    return f, lines
 
 
 def decode_16k_mono(path: Path) -> Any:

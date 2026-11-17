@@ -12,6 +12,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from ytstudio.config import get_settings
 from ytstudio.container import get_container
 from ytstudio.domain.errors import PermanentError
+from ytstudio.domain.metadata import hashtag_list
 from ytstudio.domain.schedule import parse_local_datetime
 from ytstudio.interfaces.web.app import Page, back, csrf, page, queries, render
 from ytstudio.interfaces.web.routes_ops import publish_enabled
@@ -165,6 +166,7 @@ def upload_video(
     title: str = Form(""),
     description: str = Form(""),
     tags: str = Form(""),
+    hashtags: str = Form(""),
     privacy: str = Form("private"),
     publish_at: str = Form(""),
     next: str = Form("/shorts"),
@@ -176,15 +178,25 @@ def upload_video(
         with c.uow() as uow:
             when = parse_local_datetime(publish_at, uow.schedules.get(p.channel_id).timezone, c.clock.now())
     tag_list = [t.strip() for t in tags.split(",") if t.strip()]
-    c.shorts.publish(p.user.id, asset_id, title, description, tag_list, privacy, when, c.clock.now())
+    c.shorts.publish(
+        p.user.id, asset_id, title, description, tag_list, privacy, when, c.clock.now(), hashtag_list(hashtags)
+    )
     return back(next if next.startswith("/") and not next.startswith("//") else "/shorts", "short_uploaded")
+
+
+@router.post("/assets/{asset_id}/youtube-thumbnail", dependencies=[Depends(publish_enabled)])
+def set_youtube_thumbnail(asset_id: int, p: Page = Depends(csrf)) -> Response:
+    get_container().shorts.set_thumbnail(p.user.id, asset_id)
+    return back(f"/assets/{asset_id}", "thumbnail_set")
 
 
 @router.get("/files/asset/{asset_id}/{what}")
 def asset_file(asset_id: int, what: str, download: int = 0, p: Page = Depends(page)) -> Response:
     a: dict[str, Any] | None = queries().asset(p.user.id, asset_id)
     key = (
-        (a or {}).get("data", {}).get({"video": "video_key", "cover": "cover_key", "audio": "audio_key"}.get(what, ""))
+        (a or {})
+        .get("data", {})
+        .get({"video": "video_key", "cover": "cover_key", "audio": "audio_key", "thumbnail": "thumb_key"}.get(what, ""))
     )
     if not key:
         raise HTTPException(404)

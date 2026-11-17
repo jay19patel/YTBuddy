@@ -173,3 +173,44 @@ def test_scripts_and_ideas_pages_split_long_videos_from_shorts(container, user_a
     container.review.add_idea(user_id, channel, "My short", format="short")
     mine = client.get("/scripts?format=short").text
     assert "My short" in mine and "My idea</span>" in mine and "Write the script" in mine
+
+
+def test_publish_page_writes_text_and_thumbnail_and_uploads_them_by_the_same_rules(
+    container, user_and_channel, db_url, yt
+):
+    client, token = logged_in(db_url, user_and_channel[0])
+    page = client.get("/publish").text
+    assert "Write with AI" in page and 'name="hashtags"' in page and 'name="thumb_key"' in page
+    h = {"X-CSRF-Token": token}
+    short = client.post("/publish/write", data={"about": "too short"}, headers=h)
+    assert short.status_code == 400 and "a line or two" in short.json()["detail"]
+    out = client.post(
+        "/publish/write", data={"about": "Python on a new Mac, for beginners", "mode": "video"}, headers=h
+    )
+    w = out.json()
+    assert w["title"] == "Python Setup on Mac in 5 Minutes" and w["hashtags"] == ["#python", "#coding"]
+    assert w["tags"] == ["python setup mac", "python"]  # '#' and duplicates dropped
+    assert w["thumb_key"].startswith("thumbs/UCme/upload-") and client.get(w["thumb_url"]).status_code == 200
+    assert container.media["images"].thumbs[-1] == ("5 Min Setup", "setup", "yellow", "laptop", False)
+    redo = client.post(
+        "/publish/thumbnail", data={"title": w["title"], "text": "Do This First", "old": w["thumb_key"]}, headers=h
+    ).json()
+    assert container.media["images"].thumbs[-1][0] == "Do This First"
+    if redo["thumb_key"] != w["thumb_key"]:
+        assert not container.storage.exists(w["thumb_key"])  # the draft it replaced is gone
+    own = client.post(
+        "/publish/thumbnail/own",
+        files={"image": ("t.png", b"png", "image/png")},
+        data={"old": redo["thumb_key"]},
+        headers=h,
+    ).json()
+    assert own["thumb_key"].startswith("thumbs/UCme/upload-")
+    assert client.get("/files/thumb?key=thumbs/UCother/upload-1.jpg").status_code == 404
+    r = upload(client, token, title=w["title"], description="My text", tags="a, a, b", hashtags="python, #coding",
+               thumb_key=own["thumb_key"], mode="short")  # fmt: skip
+    body = yt.uploaded[-1]["snippet"]
+    assert r.status_code == 200 and yt.thumbs == ["vid123"]
+    assert body["description"].startswith("My text\n\n#python #coding #Shorts\n\n© ") and body["tags"] == ["a", "b"]
+    assert "AI-generated" not in body["description"]  # your own footage: no AI-voice credits
+    stolen = upload(client, token, thumb_key="thumbs/UCother/upload-1.jpg")
+    assert stolen.status_code == 400 and "another channel" in stolen.text

@@ -55,7 +55,7 @@
   <div class="row"><label class="field" for="s-niche">Niche</label><input type="text" id="s-niche" name="niche" value="{{ schedule.niche }}"><p class="hint">Searched once a day (100 quota units per search, capped).</p></div>
   <div class="row"><label class="field" for="s-topics">Custom topics (one per line)</label><textarea id="s-topics" name="custom_topics" rows="4">{{ schedule.custom_topics | join("\n") }}</textarea></div>
   <div class="split row">
-    <div><label class="field" for="s-len">Target length (minutes)</label><input type="number" id="s-len" name="target_minutes" min="1" max="120" value="{{ schedule.target_minutes }}"></div>
+    <div><label class="field" for="s-len">Target length (minutes)</label><input type="number" id="s-len" name="target_minutes" min="2" max="3" value="{{ [[schedule.target_minutes, 2] | max, 3] | min }}"><p class="hint">Long videos are in-depth 2 to 3 minute explainers; Shorts are 40 to 60 seconds.</p></div>
     <div><label class="switch"><input type="checkbox" name="shorts_enabled" value="true" {% if schedule.shorts_enabled %}checked{% endif %}> Make Shorts automatically when a linked upload goes live</label></div>
   </div>
   <div class="row"><label class="field" for="s-voice">voice.md for {{ current.title }}</label>
